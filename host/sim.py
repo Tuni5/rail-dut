@@ -1,19 +1,20 @@
 """Simulated board and supply, port name "SIM". For the GUI, not for numbers.
 
 The board model: four bucks with made-up output resistance and line
-regulation, CH4 worse (the suspect chip). The J2 jumper follows the
+regulation, CH4 worse (the suspect chip). The Load Select jumper follows the
 channel that was enabled last, as if you always moved it correctly.
 """
 
 import random
 import threading
+import time
 
 import pyvisa
 from pyvisa import constants
 
 PORT = "SIM"
 
-R_LOAD = {1: 5.04, 2: 10.1}
+R_LOAD = {1: 10.1, 2: 5.04}     # as fitted on the board (host/board.toml)
 # per channel: VOUT at no load and 12 V in, output resistance, line regulation V/V, efficiency
 CH = {1: (4.860, 0.085, 0.0010, 0.80),
       2: (4.845, 0.065, 0.0015, 0.80),
@@ -73,7 +74,8 @@ class SimPicoPort:
         cmd = p[0].upper() if p else ""
         b = board
         if cmd == "IDN":
-            r = "OK rail-dut,revA,sim,ina_in=5449/2260,ina_load=5449/2260"
+            r = ("OK rail-dut,revA,0.1,mcu=SIM,board=simulated,uid=0000000000000000,f_sys=125000000,"
+                 "mpy=sim,ina_in=5449/2260,ina_load=5449/2260")
         elif cmd == "EN":
             ch, on = int(p[1]), int(p[2])
             b.en[ch - 1] = on
@@ -116,10 +118,20 @@ class SimOwon:
         self._v, self._ovp = 12.0, 24.5
         self._i, self._ocp = 1.5, 2.0
         self._on = False
+        self._v_out, self._t = 0.0, time.time()
         board.supply = self
 
     def vout(self) -> float:
-        return self._v if self._on else 0.0
+        """Rises at once; falls only as fast as the load discharges the capacitors."""
+        now = time.time()
+        dt, self._t = now - self._t, now
+        target = self._v if self._on else 0.0
+        if target >= self._v_out:
+            self._v_out = target
+        else:
+            loaded = any(board.en) and any(board.load)
+            self._v_out = max(target, self._v_out - (12.0 if loaded else 0.3) * dt)
+        return self._v_out
 
     def write(self, cmd: str) -> None:
         name, _, arg = cmd.partition(" ")
@@ -131,7 +143,7 @@ class SimOwon:
             "VOLTAGE?": f"{self._v:.3f}", "CURRENT?": f"{self._i:.3f}",
             "VOLTAGE:LIMIT?": f"{self._ovp:.3f}", "CURRENT:LIMIT?": f"{self._ocp:.3f}",
             "OUTPUT?": "ON" if self._on else "OFF",
-            "MEASURE:VOLTAGE?": f"{(self._v + random.gauss(0, 0.003)) if self._on else 0:.3f}",
+            "MEASURE:VOLTAGE?": f"{self.vout() + (random.gauss(0, 0.003) if self._on else 0):.3f}",
             "MEASURE:CURRENT?": f"{amps if name == 'MEASURE:CURRENT?' else 0:.3f}",
         }
         if name in answers:

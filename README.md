@@ -20,10 +20,15 @@ runs everything against a simulated board; CH4 is modelled as a bad part. For th
 
 ## Sequence
 
-Per channel: GUI asks to move the J2 jumper → per VIN point (supply) → EN on, output check
+Per channel: GUI asks to move the Load Select jumper → per VIN point (supply) → EN on, output check
 (VLOAD > 3 V, otherwise the channel is marked fail) → load phases LOAD1, LOAD2, LOAD1+2 → EN off, gap.
-Phase mean leaves out the first 0.4 s after each switch. Results per channel and VIN:
-VLOAD, Iload, η per phase, load regulation (LOAD2 → LOAD1+2), line regulation (spread over VIN).
+Phase mean leaves out the first 0.4 s after each switch.
+Stepping VIN down (24 → 8 V): the OWON cannot sink current, so the channel under test with LOAD1
+discharges the input until VIN is within 0.3 V of the new setpoint (at most 20 s), then the supply
+readout must reach it within 10 s.
+LED: blue ready, cyan waiting for Load Select, magenta LOAD1, orange LOAD2, white LOAD1+2, green done,
+red only for faults (watchdog, current limit, run error). Results per channel and VIN:
+VLOAD, Iload, η per phase, load regulation (lightest → heaviest load), line regulation (spread over VIN).
 Without "use supply" one point is measured at whatever VIN is set by hand.
 
 Files per run in `runs/`: `<stamp>_rail.jsonl` (every sample with its label) and `<stamp>_rail.csv` (phase means).
@@ -37,7 +42,7 @@ Files per run in `runs/`: `<stamp>_rail.jsonl` (every sample with its label) and
 
 ## Firmware commands (`firmware/pico/main.py`)
 
-`IDN`, `EN <1-4> <0|1>`, `LOAD <1|2> <0|1>` (pulses TRIG GP16 for the scope), `OFF`,
+`IDN` (firmware version, MCU, board, unique ID, clock, MicroPython version, INA226 IDs), `EN <1-4> <0|1>`, `LOAD <1|2> <0|1>` (pulses TRIG GP16 for the scope), `OFF`,
 `READ` → `OK vin iin vload iload`, `STATE`, `LED <name>`.
 
 ## Board

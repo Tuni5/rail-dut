@@ -14,8 +14,10 @@ name = "JM64RJ"
 part = "LM2596S-ADJ, suspect (R18 3.09k / R19 1k)"
 
 [loads]
-L1 = 5.04    # ohm, measured
-L2 = 10.1
+# ohm, measured. Swapped on purpose (2026-11-22): the current rises over a point,
+# LOAD1 ~0.48 A -> LOAD2 ~0.95 A -> LOAD1+2 ~1.4 A
+L1 = 10.1
+L2 = 5.04
 
 [limits]
 iin_max_a = 1.6      # input current above this: everything off

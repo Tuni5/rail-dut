@@ -81,7 +81,7 @@ class RunRequest(BaseModel):
     use_supply: bool = True
     vin_points: list[float] = [8.0, 16.0, 24.0]
     phases: list[str] = ["L1", "L2", "L12"]
-    phase_s: float = Field(2.5, ge=0.8, le=60)
+    phase_s: float = Field(2.5, ge=1.0, le=60)
     gap_s: float = Field(1.0, ge=0, le=30)
     jumper_prompt: bool = True
     supply_off_at_end: bool = True
@@ -98,12 +98,14 @@ class Proceed(BaseModel):
 
 @app.get("/")
 def index():
-    return FileResponse(UI_DIR / "index.html")
+    # no caching: after an update a normal reload must get the new page
+    return FileResponse(UI_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/ports")
 def ports():
-    return [sim.PORT] + [p.device for p in sorted(list_ports.comports(), key=lambda p: p.device)]
+    # real ports first, so the list never opens on the simulator; SIM stays available at the end
+    return [p.device for p in sorted(list_ports.comports(), key=lambda p: p.device)] + [sim.PORT]
 
 
 @app.get("/api/board")
@@ -122,7 +124,8 @@ def status(since: int = 0):
                     "steps": run.steps, "current": run.current, "channel_state": run.channel_state,
                     "settings": run.settings.__dict__, "rows": run.rows,
                     "table": table(run.rows, run.settings.phases), "line_reg": line_regulation(run.rows),
-                    "iload_offset": run.iload_offset}
+                    "iload_offset": run.iload_offset, "t0": run.t0, "plan_s": run.plan_s,
+                    "waited_s": round(run.waited_s, 1), "t_end": run.t_end}
     pico_state = None
     if pico.connected and not seq.active:
         try:
@@ -130,7 +133,7 @@ def status(since: int = 0):
         except PicoError:
             pass
     return {
-        "pico": {"connected": pico.connected, "port": pico.port_name, "identity": pico.identity,
+        "pico": {"connected": pico.connected, "port": pico.port_name, "identity": pico.identity, "info": pico.info,
                  "error": sampler.error, "state": pico_state},
         "supply": {"connected": supply.connected, "port": supply.port_name, "identity": supply.identity,
                    "last": supply.last},
@@ -219,7 +222,7 @@ def check_voltage(req: VoltCheck):
         fail(502, error)
     if board_v < 0.5:
         fail(409, f"board reads {board_v:.3f} V on {req.which.upper()}: supply on? "
-                  + ("channel enabled and J2 set?" if req.which == "vload" else ""))
+                  + ("channel enabled and Load Select set?" if req.which == "vload" else ""))
     dev = (board_v - req.dmm) / req.dmm * 100
     entry = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "which": req.which, "board": round(board_v, 4),
              "dmm": req.dmm, "dev_pct": round(dev, 3), "ok": abs(dev) <= CHECK_OK_PCT}

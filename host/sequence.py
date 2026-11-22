@@ -3,7 +3,7 @@
 Sampler: reads both INA226 every LOG_S while the Pico is connected. That also
 feeds the firmware watchdog. Each sample carries the label the sequence set.
 
-Sequence: per channel (J2 jumper moved by hand), per VIN point, per load phase.
+Sequence: per channel (Load Select jumper moved by hand), per VIN point, per load phase.
 Phase mean = samples of that phase after SETTLE_S, so the label lag is gone.
 """
 
@@ -22,12 +22,22 @@ from bench.psu import PsuError
 LOG_S = 0.25
 SETTLE_S = 0.4            # samples this soon after a phase change are not averaged
 ZERO_S = 1.0              # Iload offset: averaged this long with EN and LOAD off
+SUPPLY_STEP_S = 1.5       # typical time for the supply to settle on a new setpoint (plan only)
+VIN_SETTLE_TIMEOUT_S = 10.0   # supply readout must reach a new setpoint within this
+# Stepping VIN down: the OWON cannot sink current, so with no load the input capacitors
+# stay charged for minutes (24 V -> 8 V failed after 2 s on the bench, 2026-11-22).
+# So the next, lower setpoint is sent while the last load of a point is still on, and the
+# load stays on until VIN is down (Load Select still sits on this channel at that moment).
+# If VIN is still too high when the next point starts, _set_vin discharges with LOAD1.
+DISCHARGE_MARGIN_V = 0.3      # discharge until VIN is this close above the new setpoint
+DISCHARGE_TIMEOUT_S = 20.0
 ZERO_MAX_A = 0.010        # an offset larger than this is a fault, not an offset
 EN_SETTLE_S = 0.6         # after EN on, before the output check
-MIN_VLOAD_V = 3.0         # below this after EN: no output on the load (J2? regulator?)
+MIN_VLOAD_V = 3.0         # below this after EN: no output on the load (Load Select? regulator?)
 
 # what each phase switches and the LED color it shows
-PHASES = {"L1": ((1,), "magenta"), "L2": ((2,), "orange"), "L12": ((1, 2), "red")}
+# red is reserved for faults (watchdog, limit, run error), so no phase uses it
+PHASES = {"L1": ((1,), "magenta"), "L2": ((2,), "orange"), "L12": ((1, 2), "white")}
 PHASE_NAMES = {"L1": "LOAD1", "L2": "LOAD2", "L12": "LOAD1+2"}
 
 
@@ -139,6 +149,10 @@ class Run:
     channel_state: dict = field(default_factory=dict)
     rows: list = field(default_factory=list)
     iload_offset: float | None = None
+    t0: float = 0.0                   # sampler time at the start: x = 0 of the run graphs
+    plan_s: float = 0.0               # planned duration without jumper waits
+    waited_s: float = 0.0             # time spent waiting for the jumper so far
+    t_end: float | None = None        # sampler time when the run ended
 
 
 class Sequencer:
@@ -170,6 +184,8 @@ class Sequencer:
         run = Run(settings=settings, stamp=stamp,
                   steps=len(settings.channels) * n_vin * len(settings.phases),
                   channel_state={ch: "waiting" for ch in settings.channels})
+        run.t0 = self.sampler.now()
+        run.plan_s = plan_seconds(settings)
         self.run = run
         self.sampler.trip = None
         self._stop.clear()
@@ -197,7 +213,8 @@ class Sequencer:
             run.current = {"phase": "zero"}
             run.iload_offset = self.sampler.zero()
             self._raw.write(json.dumps({"head": asdict(s), "channels": self.channels,
-                                        "pico": self.pico.identity, "supply": self.supply.identity,
+                                        "pico": self.pico.identity, "pico_info": self.pico.info,
+                                        "supply": self.supply.identity,
                                         "iload_offset_a": run.iload_offset}) + "\n")
             self.sampler.on_sample = lambda smp: self._raw.write(json.dumps(smp) + "\n")
             if s.use_supply:
@@ -229,17 +246,21 @@ class Sequencer:
             self._raw.close()
             self._write_csv()
             run.current = {}
+            run.t_end = self.sampler.now()
             run.state, run.message = final
 
     def _channel(self, ch: int):
         run, s = self.run, self.run.settings
         run.channel_state[ch] = "running"
         if s.jumper_prompt:
-            run.state, run.message = "waiting", f"Put the J2 jumper on CH{ch}, then continue"
+            run.state, run.message = "waiting", f"Set the Load Select jumper to CH{ch}, then continue"
             run.current = {"ch": ch}
             self.pico.led("cyan")
+            self.sampler.label = {"phase": "jumper"}      # belongs to no channel in the graphs
             self._go.clear()
+            t_wait = time.time()
             self._go.wait()
+            run.waited_s += time.time() - t_wait
             run.state, run.message = "running", ""
             if self._stop.is_set():
                 return
@@ -248,24 +269,56 @@ class Sequencer:
                 run.step += (len(s.vin_points) if s.use_supply else 1) * len(s.phases)
                 return
         points = s.vin_points if s.use_supply else [None]
-        for vin_set in points:
+        later = s.channels[s.channels.index(ch) + 1:]
+        for k, vin_set in enumerate(points):
             if self._stop.is_set():
                 return
             if vin_set is not None:
-                self.supply.set_voltage(vin_set)
-                if not self.supply.is_on():
-                    self.supply.output(True)
-                else:
-                    self.supply.wait_for(vin_set)
-                self.supply.read_state()
-            ok = self._point(ch, vin_set)
+                self._set_vin(ch, vin_set)
+                if self._stop.is_set():
+                    return
+            # the setpoint after this one: next VIN of this channel, or the first of the next channel
+            nxt = points[k + 1] if k + 1 < len(points) else (points[0] if later else None)
+            ok = self._point(ch, vin_set, nxt)
             if not ok:
                 run.channel_state[ch] = "fail"
                 run.step += len(s.phases) * (len(points) - points.index(vin_set))
                 return
         run.channel_state[ch] = "done"
 
-    def _point(self, ch: int, vin_set):
+    def _set_vin(self, ch: int, vin_set: float):
+        """New VIN setpoint. Going down, discharge the input through this channel and LOAD1
+        (Load Select is on this channel here, the prompt came before)."""
+        run = self.run
+        self.supply.set_voltage(vin_set)
+        if not self.supply.is_on():
+            self.supply.output(True)                  # ramps up and waits (psu.py)
+            self.supply.read_state()
+            return
+        vin_now = self.pico.read()[0]
+        if vin_now > vin_set + DISCHARGE_MARGIN_V:
+            self.sampler.label = {"ch": ch, "vin_set": vin_set, "phase": "discharge"}
+            run.current = {"ch": ch, "vin_set": vin_set, "phase": "discharge"}
+            self.pico.led("blue")
+            self.pico.en(ch, True)
+            self.pico.load(1, True)
+            t0 = time.time()
+            try:
+                while vin_now > vin_set + DISCHARGE_MARGIN_V:
+                    if time.time() - t0 > DISCHARGE_TIMEOUT_S:
+                        raise Abort(f"VIN still {vin_now:.2f} V after {DISCHARGE_TIMEOUT_S:.0f} s of discharging "
+                                    f"towards {vin_set} V (Load Select on CH{ch}?)")
+                    self._sleep(0.1)
+                    if self._stop.is_set():
+                        return
+                    vin_now = self.pico.read()[0]
+            finally:
+                self.pico.load(1, False)
+                self.pico.en(ch, False)
+        self.supply.wait_for(vin_set, VIN_SETTLE_TIMEOUT_S)
+        self.supply.read_state()
+
+    def _point(self, ch: int, vin_set, next_vin=None):
         run, s = self.run, self.run.settings
         label = {"ch": ch, "vin_set": vin_set}
         self.sampler.label = {**label, "phase": "EN"}
@@ -276,7 +329,7 @@ class Sequencer:
         if vload < MIN_VLOAD_V:
             self.pico.en(ch, False)
             run.rows.append({**label, "phase": "EN", "error": f"no output on LOAD: VLOAD {vload:.3f} V "
-                             f"(J2 on CH{ch}? regulator on?)"})
+                             f"(Load Select on CH{ch}? regulator on?)"})
             return False
         for phase in s.phases:
             if self._stop.is_set():
@@ -290,16 +343,30 @@ class Sequencer:
             t0 = self.sampler.now()
             self._sleep(s.phase_s)
             t1 = self.sampler.now()
-            self.pico.load(1, False)
-            self.pico.load(2, False)
             run.rows.append({**label, "phase": phase, **mean(self.sampler.window(t0 + SETTLE_S, t1))})
             run.step += 1
+            if phase == s.phases[-1] and next_vin is not None and vin_set is not None and next_vin < vin_set:
+                self._step_down_under_load(ch, vin_set, next_vin)
+            self.pico.load(1, False)
+            self.pico.load(2, False)
         self.pico.en(ch, False)
         self.pico.led("blue")
         self.sampler.label = {**label, "phase": "gap"}
         run.current = {**label, "phase": "gap"}
         self._sleep(s.gap_s)
         return True
+
+    def _step_down_under_load(self, ch: int, vin_set: float, target: float):
+        """Send the lower setpoint while the load is still on and keep it on until VIN follows.
+        Not reaching it in time is no error here: _set_vin finishes the job at the next point."""
+        self.sampler.label = {"ch": ch, "vin_set": vin_set, "phase": "discharge"}
+        self.run.current = {"ch": ch, "vin_set": vin_set, "phase": "discharge"}
+        self.supply.set_voltage(target)
+        t0 = time.time()
+        while time.time() - t0 < DISCHARGE_TIMEOUT_S and not self._stop.is_set():
+            if self.pico.read()[0] <= target + DISCHARGE_MARGIN_V:
+                return
+            self._sleep(0.1)
 
     def _sleep(self, seconds):
         end = time.time() + seconds
@@ -332,6 +399,13 @@ class Abort(Exception):
     pass
 
 
+def plan_seconds(s: Settings) -> float:
+    """Expected run time without the jumper waits: what the graphs use as their time axis."""
+    points = len(s.vin_points) if s.use_supply else 1
+    per_point = EN_SETTLE_S + len(s.phases) * s.phase_s + s.gap_s + (SUPPLY_STEP_S if s.use_supply else 0)
+    return round(0.3 + ZERO_S + len(s.channels) * points * per_point, 1)
+
+
 def mean(samples: list[dict]) -> dict:
     n = len(samples)
     if not n:
@@ -357,9 +431,10 @@ def table(rows: list[dict], phases: list[str]) -> list[dict]:
         line["vin"] = r["vin"]
         line["phases"][r["phase"]] = {"vload": r["vload"], "iload": r["iload"], "eta": r["eta"]}
     for line in out:
-        p = line["phases"]
-        light = p.get("L2") or p.get("L1")
-        heavy = p.get("L12") or p.get("L1")
+        # load regulation: VLOAD from the lightest to the heaviest measured load, whichever phases those are
+        p = list(line["phases"].values())
+        light = min(p, key=lambda x: x["iload"]) if p else None
+        heavy = max(p, key=lambda x: x["iload"]) if p else None
         if light and heavy and light is not heavy:
             line["load_reg_mv"] = round((heavy["vload"] - light["vload"]) * 1000, 1)
             line["load_reg_di"] = round(heavy["iload"] - light["iload"], 3)

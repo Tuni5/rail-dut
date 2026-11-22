@@ -60,7 +60,22 @@
 
   .banner { margin: 12px 20px 0; padding: 10px 14px; border-radius: 6px; display: flex; gap: 12px; align-items: center;
             background: var(--bad-bg); color: var(--bad); font-weight: 600; }
-  .banner.prompt { background: var(--accent-bg); color: var(--accent); }
+  /* Load Select prompt: the run waits for a hand on the board, so the run row turns yellow */
+  .actions.waitrow { background: var(--warn-bg); border-top: 2px solid var(--warn); border-radius: 0 0 6px 6px; }
+  .inl { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .inl .big { font-size: 16px; font-weight: 700; color: var(--warn); }
+  .inl .sub { font-size: 13px; }
+  .inl .r { margin-left: auto; display: flex; gap: 8px; }
+  .inl .btn.primary { background: var(--warn); border-color: var(--warn); color: #1a1200; }
+  /* hover readout on the graphs */
+  .chart { position: relative; }
+  .tip { position: absolute; pointer-events: none; z-index: 3; background: var(--panel); border: 1px solid var(--rule-2);
+         border-radius: 6px; padding: 7px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.25); min-width: 170px; }
+  .tip .h { color: var(--muted); margin-bottom: 4px; }
+  .tip .r { display: grid; grid-template-columns: 12px 1fr auto; gap: 2px 8px; align-items: center; }
+  .tip i { width: 10px; height: 3px; border-radius: 2px; }
+  .tip b { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-weight: 600; text-align: right;
+           font-variant-numeric: tabular-nums; }
   .banner .right { margin-left: auto; display: flex; gap: 8px; }
 
   .layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px;
@@ -120,12 +135,21 @@
   .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .25s; }
 
   /* chart */
-  .chart { padding: 8px 14px 4px; }
-  .chart svg { display: block; width: 100%; height: 260px; }
+  .chart svg { display: block; width: 100%; height: 224px; }
   .chart text { fill: var(--muted); font: 11px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
   .chart .grid { stroke: var(--rule); stroke-width: 1; }
-  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
-  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+  .graph { padding: 10px 14px 6px; }
+  .graph + .graph { border-top: 1px solid var(--rule); }
+  .graph-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 4px; }
+  .graph-head h3 { font-size: 12.5px; font-weight: 600; margin: 0 6px 0 0; }
+  .lg { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; font-size: 12px;
+        border: 1px solid var(--rule-2); border-radius: 5px; background: var(--panel); cursor: pointer; }
+  .lg i { width: 16px; height: 3px; border-radius: 2px; }
+  .lg b { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .lg.off { opacity: .45; }
+  .lg.off i { background: var(--muted) !important; }
+  .chart svg .ph { fill: var(--ink); font-size: 11.5px; font-weight: 600; }
+  .chart svg .grp { fill: var(--muted); font-size: 11px; }
 
   /* tables */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -155,15 +179,13 @@
   <div class="connections">
     <div class="connection"><i class="dot" id="pico-dot"></i><b>Pico</b>
       <select id="pico-port"></select><button class="btn small" id="pico-conn">Connect</button></div>
-    <div class="connection"><i class="dot" id="psu-dot"></i><b>Supply</b>
+    <div class="connection"><i class="dot" id="psu-dot"></i><b id="psu-name">Supply</b>
       <select id="psu-port"></select><button class="btn small" id="psu-conn">Connect</button></div>
     <button class="btn small" id="theme">Theme</button>
     <button class="btn danger" id="all-off">All off</button>
   </div>
 </header>
 <div class="banner" id="trip" hidden></div>
-<div class="banner prompt" id="prompt" hidden><span id="prompt-text"></span>
-  <div class="right"><button class="btn small" id="skip">Skip channel</button><button class="btn small primary" id="go">Continue</button></div></div>
 
 <div class="layout">
 <main>
@@ -175,28 +197,32 @@
       <div class="field"><span class="label">Channels</span><div class="row" id="set-ch"></div></div>
       <div class="field"><span class="label">VIN points (V, from the supply)</span>
         <div class="row"><input type="text" id="set-vin" class="mono" style="width:130px">
-          <label class="check"><input type="checkbox" id="set-supply" checked>use supply</label></div></div>
+          <label class="check"><input type="checkbox" id="set-supply" checked>use supply</label></div>
+        <span class="hint" id="vin-hint"></span>
+        <span class="error" id="vin-err"></span></div>
       <div class="field"><span class="label">Load phases</span><div class="row" id="set-ph"></div></div>
       <div class="field"><span class="label">Per phase / gap (s)</span>
-        <div class="row"><input type="number" id="set-phase" step="0.5" min="0.8"><input type="number" id="set-gap" step="0.5" min="0"></div></div>
+        <div class="row"><input type="number" id="set-phase" step="0.5" min="1"><input type="number" id="set-gap" step="0.5" min="0"></div></div>
       <div class="field"><span class="label">Options</span>
-        <label class="check"><input type="checkbox" id="set-jumper" checked>ask before each channel (J2)</label>
+        <label class="check"><input type="checkbox" id="set-jumper" checked>ask before each channel (Load Select jumper)</label>
         <label class="check"><input type="checkbox" id="set-psuoff" checked>supply off at the end</label></div>
     </div>
     <div class="actions">
       <button class="btn primary" id="start">Start</button>
       <button class="btn" id="stop" disabled>Stop</button>
-      <div class="bar"><i id="progress"></i></div>
+      <span id="inline-prompt" class="inl" hidden><span class="big" id="inl-big"></span>
+        <span class="sub">Set the jumper on the board, then continue</span>
+        <span class="r"><button class="btn" id="skip">Skip channel</button><button class="btn primary" id="go">Continue</button></span></span>
+      <div class="bar" id="bar"><i id="progress"></i></div>
       <span class="hint" id="run-line">idle</span>
     </div>
   </section>
 
   <section class="card">
-    <div class="card-head"><h2>Live</h2>
-      <div class="legend" id="legend"></div>
-      <div class="right"><select id="view"><option value="out">VLOAD + Iload</option><option value="in">VIN + Iin</option></select>
-        <select id="span"><option value="30">30 s</option><option value="120">2 min</option><option value="600">10 min</option></select></div></div>
-    <div class="chart"><svg id="chart" viewBox="0 0 800 260" preserveAspectRatio="none"></svg></div>
+    <div class="card-head"><h2>Live</h2><span class="hint">click a legend entry to hide it; the axis rescales</span>
+</div>
+    <div class="graph"><div class="graph-head"><h3>Voltage</h3><span id="lg-v"></span></div><div class="chart"><svg id="g-v"></svg><div class="tip" id="tip-v" hidden></div></div></div>
+    <div class="graph"><div class="graph-head"><h3>Current</h3><span id="lg-i"></span></div><div class="chart"><svg id="g-i"></svg><div class="tip" id="tip-i" hidden></div></div></div>
   </section>
 
   <section class="card">
@@ -226,12 +252,13 @@
       <div class="switches" id="sw-en"></div>
       <div class="switches" id="sw-load"></div>
       <div class="row"><button class="btn small" id="zero">Zero Iload</button><span class="hint num" id="offset"></span></div>
+      <div class="kv num" id="pico-info"></div>
       <div class="hint" id="pico-ident"></div>
     </div>
   </section>
 
   <section class="card">
-    <div class="card-head"><h2>Supply</h2><span class="hint" id="psu-ident"></span></div>
+    <div class="card-head"><h2 id="psu-title">Supply</h2><span class="hint" id="psu-ident"></span></div>
     <div class="panel">
       <div class="row"><input type="number" id="psu-v" step="0.1" min="0" max="24" placeholder="V">
         <input type="number" id="psu-a" step="0.05" min="0" max="2" placeholder="A">
@@ -261,7 +288,11 @@
 <script>
 const $ = id => document.getElementById(id);
 const state = { board: null, next: 0, samples: [], status: null, busy: false };
-const fmt = (v, d) => v == null || Number.isNaN(v) ? "–" : Number(v).toFixed(d);
+const fmt = (v, d) => {
+  if (v == null || Number.isNaN(Number(v))) return "–";
+  const t = Number(v).toFixed(d);
+  return /^-0[.,]?0*$/.test(t) ? t.slice(1) : t;            // no "-0.000"
+};
 
 async function api(path, body) {
   const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
@@ -294,6 +325,9 @@ async function init() {
   document.querySelectorAll("[data-load]").forEach(el => el.onclick = () =>
     api("/api/pico/load", { n: +el.dataset.load, on: !el.classList.contains("active") }).then(() => report()).catch(report));
   document.querySelectorAll("#set-ch input, #set-ph input, #set-vin, #set-phase, #set-gap, #set-supply").forEach(el => el.oninput = showPlan);
+  // phase and gap time: whole half seconds, also when typed by hand (2,3 -> 2.5)
+  for (const [id, lo] of [["set-phase", 1], ["set-gap", 0]])
+    $(id).onchange = () => { const v = Number($(id).value); $(id).value = Math.max(lo, Math.round((Number.isFinite(v) ? v : lo) * 2) / 2); showPlan(); };
   await loadPorts();
   showPlan();
   tick();
@@ -313,17 +347,31 @@ function readSettings() {
   return {
     channels: checked("#set-ch").map(Number),
     use_supply: $("set-supply").checked,
-    vin_points: $("set-vin").value.split(/[\s,;]+/).filter(Boolean).map(Number),
+    // spaces or ";" separate the points; a comma is a decimal comma ("7,5" = 7.5 V)
+    vin_points: $("set-vin").value.split(/[\s;]+/).filter(Boolean).map(v => Number(v.replace(",", "."))),
     phases: checked("#set-ph"),
     phase_s: +$("set-phase").value, gap_s: +$("set-gap").value,
     jumper_prompt: $("set-jumper").checked, supply_off_at_end: $("set-psuoff").checked,
   };
 }
+// Same limits the server enforces (host/bench/config.py), checked here so the error shows at the field.
+function vinError(s) {
+  if (!s.use_supply) return "";
+  const [lo, hi] = state.board.vin_range;
+  if (!s.vin_points.length) return "Enter at least one voltage";
+  const bad = s.vin_points.filter(v => !Number.isFinite(v) || v < lo || v > hi);
+  return bad.length ? `Allowed ${lo}–${hi} V; not allowed: ${bad.map(v => Number.isFinite(v) ? v : "?").join(", ")}` : "";
+}
+
 function showPlan() {
   const s = readSettings();
+  $("vin-err").textContent = vinError(s);
+  $("vin-hint").textContent = "";
+  $("vin-hint").textContent = `Volts, one value per point, separated by spaces: 8 16 24 = three points. ` +
+    `Decimals with point or comma (7.5). Allowed ${state.board.vin_range[0]}–${state.board.vin_range[1]} V.`;
   const points = s.use_supply ? s.vin_points.length : 1;
   const secs = s.channels.length * points * (s.phases.length * s.phase_s + s.gap_s + 0.6 + (s.use_supply ? 1.5 : 0));
-  $("plan").textContent = `${s.channels.length} ch × ${points} VIN × ${s.phases.length} phases · about ${Math.round(secs)} s plus jumper moves`;
+  $("plan").textContent = `${s.channels.length} ch × ${points} VIN × ${s.phases.length} phases · about ${Math.round(secs)} s plus Load Select moves`;
   $("set-vin").disabled = !s.use_supply;
 }
 
@@ -343,7 +391,11 @@ $("psu-conn").onclick = async () => {
   } catch (e) { report(e, "psu-err"); }
 };
 $("all-off").onclick = () => api("/api/pico/off", {}).then(() => report()).catch(report);
-$("start").onclick = () => api("/api/run/start", readSettings()).then(() => report()).catch(report);
+$("start").onclick = () => {
+  const s = readSettings(), bad = vinError(s);
+  if (bad) { $("vin-err").textContent = bad; $("set-vin").focus(); return; }
+  api("/api/run/start", s).then(() => report()).catch(report);
+};
 $("stop").onclick = () => api("/api/run/stop", {}).catch(report);
 $("go").onclick = () => api("/api/run/continue", { skip: false }).catch(report);
 $("skip").onclick = () => api("/api/run/continue", { skip: true }).catch(report);
@@ -361,7 +413,7 @@ $("psu-set").onclick = async () => {
 };
 $("psu-on").onclick = () => api("/api/supply/output", { on: true }).then(showPsu).catch(e => report(e, "psu-err"));
 $("psu-off").onclick = () => api("/api/supply/output", { on: false }).then(showPsu).catch(e => report(e, "psu-err"));
-$("view").onchange = drawChart; $("span").onchange = drawChart;
+window.addEventListener("resize", drawChart);
 $("zero").onclick = () => api("/api/pico/zero", {}).then(() => report()).catch(report);
 document.querySelectorAll("[data-chk]").forEach(el => el.onclick = async () => {
   const which = el.dataset.chk, v = $("chk-" + which).value;
@@ -379,7 +431,11 @@ async function tick() {
     state.next = st.next;
     if (state.samples.length > 6000) state.samples.splice(0, state.samples.length - 6000);
     render(st);
-  } catch (e) { report(new Error("server not reachable")); }
+  } catch (e) {
+    // a fetch failure means the server is gone; anything else is a bug in this page: show it as it is
+    report(e instanceof TypeError && /fetch/i.test(e.message) ? new Error("server not reachable") : e);
+    console.error(e);
+  }
   setTimeout(tick, 300);
 }
 
@@ -390,20 +446,37 @@ function render(st) {
   $("pico-conn").textContent = st.pico.connected ? "Disconnect" : "Connect";
   $("psu-conn").textContent = st.supply.connected ? "Disconnect" : "Connect";
   $("pico-port").disabled = st.pico.connected; $("psu-port").disabled = st.supply.connected;
-  $("pico-ident").textContent = st.pico.connected ? `${st.pico.port} · ${st.pico.identity}` + (st.pico.error ? ` · ${st.pico.error}` : "") : "Pico not connected";
-  $("psu-ident").textContent = st.supply.connected ? `${st.supply.port}` : "";
+  // while connected, the selector shows the port actually in use
+  if (st.pico.connected && st.pico.port) $("pico-port").value = st.pico.port;
+  if (st.supply.connected && st.supply.port) $("psu-port").value = st.supply.port;
+  const pi = st.pico.info;
+  $("pico-info").innerHTML = pi ? `<span>port</span><b>${st.pico.port}</b><span>firmware</span><b>${pi.name} ${pi.rev} v${pi.fw}</b>
+    <span>MCU</span><b>${pi.mcu ?? "?"} · ${pi.f_sys ? (pi.f_sys / 1e6).toFixed(0) + " MHz" : "?"}</b><span>board</span><b>${pi.board ?? "?"}</b>
+    <span>UID</span><b>${pi.uid ?? "?"}</b><span>MicroPython</span><b>${pi.mpy ?? "?"}</b>
+    <span>INA in / load</span><b>${pi.ina_in ?? "?"} / ${pi.ina_load ?? "?"}</b>` : "";
+  $("pico-ident").textContent = st.pico.connected ? (st.pico.error ? st.pico.error : "") : "Pico not connected";
+  // name from the instrument's own *IDN? answer ("OWON,SPE3102,serial,FV:..."): maker and model
+  const model = st.supply.connected && st.supply.identity ? st.supply.identity.split(",").slice(0, 2).join(" ") : null;
+  $("psu-name").textContent = model || "Supply";
+  $("psu-title").textContent = model ? `Supply · ${model}` : "Supply";
+  $("psu-ident").textContent = st.supply.connected ? `${st.supply.port} · ${st.supply.identity}` : "not connected";
   if (st.supply.last) showPsu(st.supply.last);
 
   $("trip").hidden = !st.trip; $("trip").textContent = st.trip || "";
   const waiting = run?.state === "waiting";
-  $("prompt").hidden = !waiting; $("prompt-text").textContent = waiting ? run.message : "";
+  // Load Select prompt: the whole run row turns yellow, progress and status line step aside
+  $("inline-prompt").hidden = !waiting;
+  $("inl-big").textContent = waiting ? `Load Select → CH${run.current.ch}` : "";
+  $("run-line").hidden = waiting;
+  $("bar").hidden = waiting;
+  $("start").closest(".actions").classList.toggle("waitrow", waiting);
 
   $("start").disabled = active || !st.pico.connected;
   $("stop").disabled = !active;
   $("progress").style.width = run ? `${Math.round(100 * run.step / Math.max(1, run.steps))}%` : "0";
   if (run) {
     const c = run.current, ph = c.phase ? (state.board.phases[c.phase] || c.phase) : "";
-    $("run-line").textContent = active
+    $("run-line").textContent = waiting ? run.message : active
       ? `${c.ch ? "CH" + c.ch : ""}${c.vin_set != null ? ` · ${c.vin_set} V` : ""}${ph ? (c.ch ? " · " : "") + ph : ""} · step ${run.step}/${run.steps}`
       : `${run.state}${run.message ? ": " + run.message : ""} · ${run.stamp}`;
   }
@@ -474,48 +547,211 @@ function renderResults(run) {
 
 // ---- chart ---------------------------------------------------------------
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-function drawChart() {
-  const svg = $("chart"), W = 800, H = 260, L = 52, R = 56, T = 12, B = 24;
-  const view = $("view").value, span = +$("span").value;
-  const [kv, ki, cv, ci, nv, ni] = view === "out" ? ["vload", "iload", "--s-vload", "--s-iload", "VLOAD", "Iload"]
-                                                  : ["vin", "iin", "--s-vin", "--s-iin", "VIN", "Iin"];
-  $("legend").innerHTML = `<span><i style="background:var(${cv})"></i>${nv} (left)</span><span><i style="background:var(${ci})"></i>${ni} (right)</span>`;
-  const all = state.samples;
-  if (!all.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">no samples yet: connect the Pico</text>`; return; }
-  const tEnd = all[all.length - 1].t, tStart = tEnd - span;
-  const pts = all.filter(s => s.t >= tStart);
-  const vs = pts.map(s => s[kv]).filter(v => v > 0.05), is = pts.map(s => s[ki]);
-  let vMin = vs.length ? Math.min(...vs) : 0, vMax = vs.length ? Math.max(...vs) : 1;
-  const pad = Math.max(0.01, (vMax - vMin) * 0.15); vMin -= pad; vMax += pad;
-  const iMax = Math.max(0.1, ...is) * 1.15;
-  const x = t => L + (t - tStart) / span * (W - L - R);
-  const yv = v => T + (1 - (v - vMin) / (vMax - vMin)) * (H - T - B);
-  const yi = i => T + (1 - i / iMax) * (H - T - B);
-  let g = "";
-  // phase bands
-  let band = null;
-  const flush = (end) => { if (band && css("--ph-" + band.ph)) g += `<rect x="${x(band.t0)}" y="${T}" width="${Math.max(0, x(end) - x(band.t0))}" height="${H - T - B}" fill="${css("--ph-" + band.ph)}"/>`; };
-  for (const s of pts) {
-    if (!band || band.ph !== s.phase) { flush(s.t); band = { ph: s.phase, t0: s.t }; }
-  }
-  flush(tEnd);
-  for (let k = 0; k <= 4; k++) {
-    const yy = T + k * (H - T - B) / 4, v = vMax - k * (vMax - vMin) / 4, i = iMax - k * iMax / 4;
-    g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/>`;
-    g += `<text x="${L - 6}" y="${yy + 4}" text-anchor="end">${v.toFixed(3)}</text><text x="${W - R + 6}" y="${yy + 4}">${(i).toFixed(2)}</text>`;
-  }
-  g += `<text x="${L}" y="${H - 6}">−${span} s</text><text x="${W - R}" y="${H - 6}" text-anchor="end">now</text>`;
-  const line = (key, y, color, skipLow) => {
-    let d = "", gap = true, prev = null;
-    for (const s of pts) {
-      if (prev && s.t - prev.t > 2) gap = true;
-      if (skipLow && s[key] < 0.05) { gap = true; prev = s; continue; }
-      d += `${gap ? "M" : "L"}${x(s.t).toFixed(1)},${y(s[key]).toFixed(1)}`; gap = false; prev = s;
+// Two graphs, voltage and current. Series: [key, name, color var, unit scale, unit, decimals, shown]
+const GRAPHS = {
+  v: { svg: "g-v", lg: "lg-v", zero: false, series: [
+    { key: "vin", name: "VIN", color: "--s-vin", scale: 1, unit: "V", dec: 3, on: false },
+    { key: "vload", name: "VLOAD", color: "--s-vload", scale: 1, unit: "V", dec: 3, on: true }] },
+  i: { svg: "g-i", lg: "lg-i", zero: true, series: [
+    { key: "iin", name: "Iin", color: "--s-iin", scale: 1000, unit: "mA", dec: 1, on: true },
+    { key: "iload", name: "Iload", color: "--s-iload", scale: 1000, unit: "mA", dec: 1, on: true }] },
+};
+const PHASE_LABEL = { L1: "LOAD1", L2: "LOAD2", L12: "LOAD1+2" };
+const PHASE_SHORT = { L1: "L1", L2: "L2", L12: "L1+2" };
+// phases whose samples are measurements; the rest (off, VIN step down, zero) is drawn faint
+const MEASURED = new Set(["EN", "L1", "L2", "L12"]);
+
+function niceAxis(lo, hi, zero) {
+  if (zero) lo = lo < -0.05 * Math.abs(hi) ? lo : 0;     // reading noise around 0 does not open a negative range
+  if (!(hi > lo)) { hi = lo + (zero ? 1 : Math.max(0.01, Math.abs(lo) * 0.01)); }
+  const raw = (hi - lo) / 4, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(x => x >= raw - 1e-12);
+  const dec = Math.max(0, -Math.floor(Math.log10(step) + 1e-9) + (Math.round(step / p) === 2.5 ? 1 : 0));
+  return { lo: Math.floor(lo / step + 1e-9) * step, hi: Math.ceil(hi / step - 1e-9) * step, step, dec };
+}
+
+// Time axis of both graphs: always one run, x = run time from its start with the Load Select
+// waits cut out (they are not measurement time). Fixed axis up to the planned end, the trace
+// grows from left to right. Before the first run the graphs stay empty.
+function timeWindow(all) {
+  const run = state.status?.run, last = all[all.length - 1];
+  if (run && last) {
+    const active = run.state === "running" || run.state === "waiting";
+    const pts = [];
+    let waited = 0, prev = null;
+    for (const p of all) {
+      if (p.t < run.t0 || (run.t_end != null && p.t > run.t_end)) { prev = null; continue; }
+      if (p.phase === "jumper") { if (prev) waited += p.t - prev.t; prev = p; continue; }
+      if (prev && prev.phase === "jumper") waited += p.t - prev.t;
+      pts.push({ ...p, x: p.t - run.t0 - waited });
+      prev = p;
     }
-    return `<path d="${d}" fill="none" stroke="${css(color)}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+    const lastX = pts.length ? pts[pts.length - 1].x : 0;
+    const remaining = run.plan_s * (1 - run.step / Math.max(1, run.steps));
+    const end = active ? Math.max(run.plan_s, lastX + remaining) : Math.max(lastX, 1);
+    return { pts, x0: 0, x1: end, fixed: true, now: active ? lastX : null };
+  }
+  return { pts: [], x0: 0, x1: 1, fixed: true, now: null };
+}
+
+function timeLabel(sec) {
+  return sec < 60 ? `${Math.round(sec)} s` : `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+}
+
+function drawChart() {
+  const all = state.samples, win = timeWindow(all);
+  for (const id of Object.keys(GRAPHS)) drawGraph(GRAPHS[id], id, all, win);
+}
+
+function drawGraph(g, id, all, win) {
+  const svg = $(g.svg), W = Math.max(300, Math.round(svg.clientWidth || 800)), H = 224;
+  const L = 60, R = 16, T = 50, B = 22, x0 = L, x1 = W - R, y0 = T, y1 = H - B;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const last = all[all.length - 1];
+  $(g.lg).innerHTML = g.series.map((s, j) => `<span class="lg${s.on ? "" : " off"}" data-g="${id}" data-j="${j}">
+    <i style="background:var(${s.color})"></i>${s.name} <b>${last ? fmt(last[s.key] * s.scale, s.dec) : "–"} ${s.unit}</b></span>`).join("");
+  $(g.lg).querySelectorAll(".lg").forEach(el => el.onclick = () => {
+    const s = GRAPHS[el.dataset.g].series[+el.dataset.j]; s.on = !s.on; drawChart(); });
+  if (!all.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">no samples yet: connect the Pico</text>`; return; }
+
+  const tStart = win.x0, tEnd = win.x1, span = tEnd - tStart, pts = win.pts;
+  if (!pts.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">${state.status?.run ? "waiting for samples" : "no run yet: the graphs show a run from start to end"}</text>`; return; }
+  const X = t => x0 + (t - tStart) / span * (x1 - x0);
+  const shown = g.series.filter(s => s.on);
+  const vals = [];
+  for (const s of shown) for (const p of pts) { const v = p[s.key]; if (g.zero || v > 0.05) vals.push(v * s.scale); }
+  const ax = niceAxis(vals.length ? Math.min(...vals) : 0, vals.length ? Math.max(...vals) : 1, g.zero);
+  const Y = v => y0 + (1 - (v - ax.lo) / (ax.hi - ax.lo)) * (y1 - y0);
+  let out = "";
+
+  // Run structure from the sample labels: channel blocks (alternating background, bold name),
+  // VIN blocks inside (solid line, "16 V"), load phases inside those (dashed, name if there is room).
+  // consecutive samples with the same key form a block; unlabelled samples in between do not split it
+  const runs = (key) => {
+    const out = [];
+    for (const p of pts) {
+      const k = key(p);
+      if (k == null) continue;
+      if (!out.length || out[out.length - 1].k !== k) out.push({ k, p, t0: p.x, t1: p.x });
+      else out[out.length - 1].t1 = p.x;
+    }
+    return out;
   };
-  g += line(ki, yi, ci, false) + line(kv, yv, cv, true);
-  svg.innerHTML = g;
+  const chBlocks = runs(p => p.ch ?? null).filter(b => b.k != null);
+  const vinBlocks = runs(p => p.ch != null ? `${p.ch}|${p.vin_set}` : null).filter(b => b.k != null);
+  const phBlocks = runs(p => p.ch != null ? `${p.ch}|${p.vin_set}|${p.phase}` : null).filter(b => b.k != null);
+  const lastT = pts[pts.length - 1].x, step = pts.length > 1 ? (lastT - pts[0].x) / (pts.length - 1) : 0.25;
+  const xs = b => X(b.t0), xe = b => X(Math.min(b.t1 + step, lastT));
+  chBlocks.forEach(b => {
+    if (b.p.ch % 2 === 0) out += `<rect x="${xs(b)}" y="0" width="${xe(b) - xs(b)}" height="${y1}" fill="var(--panel-2)"/>`;
+  });
+  // Load names: the same form in every block. Full names if the narrowest finished block has room,
+  // otherwise short ones, otherwise none (no block gets a label its neighbour does not get).
+  const growing = win.now != null ? phBlocks[phBlocks.length - 1] : null;
+  const loadBlocks = phBlocks.filter(b => PHASE_LABEL[b.p.phase] && b !== growing);
+  const minW = loadBlocks.length ? Math.min(...loadBlocks.map(b => xe(b) - xs(b))) : Infinity;
+  const names = minW >= 56 ? PHASE_LABEL : minW >= 30 ? PHASE_SHORT : null;
+  phBlocks.forEach((b, k) => {
+    if (k && phBlocks[k - 1].p.ch === b.p.ch && phBlocks[k - 1].p.vin_set === b.p.vin_set)
+      out += `<line x1="${xs(b)}" x2="${xs(b)}" y1="${y0 - 16}" y2="${y1}" stroke="var(--rule-2)" stroke-dasharray="2 3"/>`;
+    const fits = b !== growing || xe(b) - xs(b) >= (names === PHASE_LABEL ? 56 : 30);
+    if (names && names[b.p.phase] && fits)
+      out += `<text x="${(xs(b) + xe(b)) / 2}" y="${y0 - 5}" text-anchor="middle">${names[b.p.phase]}</text>`;
+  });
+  vinBlocks.forEach(b => {
+    out += `<line x1="${xs(b)}" x2="${xs(b)}" y1="18" y2="${y1}" stroke="var(--rule-2)"/>`;
+    if (b.p.vin_set != null && xe(b) - xs(b) > 26) out += `<text class="grp" x="${(xs(b) + xe(b)) / 2}" y="29" text-anchor="middle">${b.p.vin_set} V</text>`;
+  });
+  chBlocks.forEach((b, k) => {
+    out += `<line x1="${xs(b)}" x2="${xs(b)}" y1="2" y2="${y1}" stroke="var(--muted)" stroke-width="1.5"/>`;
+    if (k === chBlocks.length - 1 && win.now == null)
+      out += `<line x1="${xe(b)}" x2="${xe(b)}" y1="2" y2="${y1}" stroke="var(--muted)" stroke-width="1.5"/>`;
+    const name = state.board.channels[b.p.ch]?.name || "";
+    if (xe(b) - xs(b) > 40) out += `<text class="ph" x="${(xs(b) + xe(b)) / 2}" y="13" text-anchor="middle">CH${b.p.ch}${xe(b) - xs(b) > 110 ? " · " + name : ""}</text>`;
+  });
+
+  // grid, axes
+  for (let v = ax.lo; v <= ax.hi + ax.step / 2; v += ax.step) {
+    const y = Y(v);
+    out += `<line class="grid" x1="${x0}" x2="${x1}" y1="${y}" y2="${y}"/><text x="${x0 - 8}" y="${y + 4}" text-anchor="end">${v.toFixed(ax.dec)}</text>`;
+  }
+  const unit = shown[0]?.unit || g.series[0].unit;
+  out += `<text x="${x0 - 8}" y="${y0 - 5}" text-anchor="end" style="font-weight:600">${unit}</text>`;
+  const tick = [5, 10, 15, 30, 60, 120, 300].find(t => span / t <= 8) || 600;
+  if (win.fixed) {
+    for (let s = 0; s <= span + 1e-6; s += tick)
+      out += `<text x="${X(tStart + s)}" y="${H - 6}" text-anchor="${s === 0 ? "start" : "middle"}">${timeLabel(s)}</text>`;
+    if (win.now != null) out += `<line x1="${X(win.now)}" x2="${X(win.now)}" y1="${y0}" y2="${y1}" stroke="var(--accent)" stroke-width="1.5"/>`;
+  } else {
+    for (let s = 0; s <= span; s += tick)
+      out += `<text x="${X(tEnd - s)}" y="${H - 6}" text-anchor="${s === 0 ? "end" : "middle"}">${s === 0 ? "now" : `−${timeLabel(s)}`}</text>`;
+  }
+  out += `<line x1="${x0}" x2="${x1}" y1="${y1}" y2="${y1}" stroke="var(--rule-2)"/>`;
+
+  // traces; a channel that is off leaves a gap instead of a drop to zero
+  const path = (s, keep) => {
+    let d = "", pen = false, prev = null;
+    for (const p of pts) {
+      const v = p[s.key];
+      const skip = !keep(p) || (!g.zero && v < 0.05);
+      if ((prev && p.t - prev.t > 2) || skip) pen = false;
+      if (skip) { prev = p; continue; }
+      d += `${pen ? "L" : "M"}${X(p.x).toFixed(1)},${Y(v * s.scale).toFixed(1)}`; pen = true; prev = p;
+    }
+    return d;
+  };
+  for (const s of shown) {
+    out += `<path d="${path(s, () => true)}" fill="none" stroke="var(${s.color})" stroke-width="1.2" opacity=".3" stroke-linejoin="round"/>`;
+    // solid only inside one labelled point; the step into and out of it is part of the faint line
+    out += `<path d="${path(s, p => p.ch != null && MEASURED.has(p.phase))}" fill="none" stroke="var(${s.color})" stroke-width="1.8" stroke-linejoin="round"/>`;
+  }
+  // hover: crosshair in both graphs at the same sample, readout box in the graph under the mouse
+  g.geo = { W, x0, x1, y0, y1, X, pts, fixed: win.fixed, lastX: pts[pts.length - 1].x };
+  const h = state.hover && pts.find(p => p.i === state.hover.i);
+  if (h) {
+    out += `<line x1="${X(h.x)}" x2="${X(h.x)}" y1="${y0}" y2="${y1}" stroke="var(--ink)" stroke-width="1" stroke-dasharray="3 2"/>`;
+    for (const s of shown) {
+      const v = h[s.key];
+      if (g.zero || v >= 0.05) out += `<circle cx="${X(h.x)}" cy="${Y(v * s.scale)}" r="3.5" fill="var(${s.color})" stroke="var(--panel)" stroke-width="1.5"/>`;
+    }
+  }
+  svg.innerHTML = out;
+  hoverHook(g, id);
+}
+
+const PHASE_NAME = { EN: "enable", gap: "off", discharge: "VIN step down", L1: "LOAD1", L2: "LOAD2", L12: "LOAD1+2" };
+function hoverHook(g, id) {
+  const svg = $(g.svg), tip = $(`tip-${id}`);
+  if (!svg.dataset.hooked) {
+    svg.dataset.hooked = "1";
+    svg.addEventListener("mousemove", ev => {
+      const geo = g.geo;
+      if (!geo || !geo.pts.length) return;
+      const r = svg.getBoundingClientRect(), mx = (ev.clientX - r.left) * geo.W / r.width;
+      if (mx < geo.x0 || mx > geo.x1) { state.hover = null; drawChart(); return; }
+      let best = geo.pts[0];
+      for (const p of geo.pts) if (Math.abs(geo.X(p.x) - mx) < Math.abs(geo.X(best.x) - mx)) best = p;
+      state.hover = { i: best.i, graph: id, px: ev.clientX - r.left, py: ev.clientY - r.top, w: r.width };
+      drawChart();
+    });
+    svg.addEventListener("mouseleave", () => { state.hover = null; drawChart(); });
+  }
+  const h = state.hover;
+  if (!h || h.graph !== id) { tip.hidden = true; return; }
+  const p = g.geo.pts.find(q => q.i === h.i);
+  if (!p) { tip.hidden = true; return; }
+  const where = p.ch ? `CH${p.ch}${p.vin_set != null ? ` · ${p.vin_set} V` : ""} · ${PHASE_NAME[p.phase] || p.phase}`
+                     : (PHASE_NAME[p.phase] || "idle");
+  const pin = p.vin * p.iin, pout = p.vload * p.iload;
+  const row = (c, n, v) => `<i style="background:var(${c})"></i><span>${n}</span><b>${v}</b>`;
+  const when = g.geo.fixed ? timeLabel(p.x) : (g.geo.lastX - p.x < 0.05 ? "now" : `−${timeLabel(g.geo.lastX - p.x)}`);
+  tip.innerHTML = `<div class="h">${when} · ${where}</div><div class="r">` +
+    row("--s-vin", "VIN", `${fmt(p.vin, 3)} V`) + row("--s-vload", "VLOAD", `${fmt(p.vload, 3)} V`) +
+    row("--s-iin", "Iin", `${fmt(p.iin * 1000, 1)} mA`) + row("--s-iload", "Iload", `${fmt(p.iload * 1000, 1)} mA`) +
+    `<i></i><span>η</span><b>${pin > 0.2 && pout > 0.1 ? fmt(100 * pout / pin, 1) + " %" : "–"}</b></div>`;
+  tip.hidden = false;
+  const left = h.px + 16 + 190 > h.w ? h.px - 16 - tip.offsetWidth : h.px + 16;
+  tip.style.left = `${left}px`; tip.style.top = `${Math.max(4, h.py - 40)}px`;
 }
 
 init().catch(e => report(e));

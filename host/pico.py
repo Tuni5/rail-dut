@@ -19,6 +19,7 @@ class PicoLink:
         self._timeout_s = timeout_s
         self.port_name: str | None = None
         self.identity: str | None = None
+        self.info: dict | None = None     # IDN fields: name, rev, fw, mcu, board, uid, f_sys, mpy, ina_in, ina_load
 
     @property
     def connected(self) -> bool:
@@ -45,6 +46,7 @@ class PicoLink:
             ident = self.identity
             self.close()
             raise PicoError(f"{port_name} answered {ident!r}, not rail-dut firmware")
+        self.info = parse_identity(self.identity)
         return self.identity
 
     def close(self) -> None:
@@ -62,7 +64,7 @@ class PicoLink:
                 except Exception:
                     pass
             self._port = None
-            self.port_name = self.identity = None
+            self.port_name = self.identity = self.info = None
 
     # --- commands -----------------------------------------------------------
     def en(self, ch: int, on: bool) -> None:
@@ -103,3 +105,12 @@ class PicoLink:
         if not reply.startswith("OK"):
             raise PicoError(reply)
         return reply
+
+
+def parse_identity(line: str) -> dict:
+    """rail-dut,revA,0.1,mcu=RP2040,board=...,uid=...,f_sys=...,mpy=...,ina_in=...,ina_load=..."""
+    fields = line.split(",")
+    info = {"name": fields[0], "rev": fields[1] if len(fields) > 1 else "?",
+            "fw": fields[2] if len(fields) > 2 else "?"}
+    info.update(f.split("=", 1) for f in fields[3:] if "=" in f)
+    return info

@@ -1,7 +1,8 @@
 # rail-dut rev A - command firmware (MicroPython, Pico)
 # One command per line over USB serial, one answer per line: "OK ..." or "ERR ...".
 #
-#   IDN              -> OK rail-dut,revA,fw2,ina_in=5449/2260,ina_load=5449/2260
+#   IDN              -> OK rail-dut,revA,0.1,mcu=RP2040,board=Raspberry Pi Pico with RP2040,
+#                          uid=E6614103E7..., f_sys=125000000,mpy=1.24.1,ina_in=5449/2260,ina_load=5449/2260
 #   EN <1-4> <0|1>   regulator CHx on/off
 #   LOAD <1|2> <0|1> load switch; every change pulses TRIG (GP16) for the scope
 #   OFF              all EN and LOAD off
@@ -14,11 +15,13 @@
 # U5 input (R20) I2C1 GP2/3, U6 load (R21) I2C0 GP20/21, both 0x40
 
 from machine import Pin, I2C, PWM
+import machine
+import os
 import sys
 import select
 import time
 
-FW = "fw2"
+FW_VERSION = "0.1"
 WDT_MS = 3000
 LED_DUTY = 0.05          # max brightness 1/20
 R_SHUNT_IN = 0.05        # R20
@@ -99,6 +102,17 @@ def pulse_trig():
     trig.value(0)
 
 
+def mcu_info():
+    """What the Pico says about itself: board, chip, unique ID, clock, MicroPython version."""
+    board = getattr(sys.implementation, "_machine", os.uname().machine).replace(",", " ")
+    chip = board.split()[-1] if " with " in board else "unknown"
+    uid = "".join("%02X" % b for b in machine.unique_id())
+    return "mcu=%s,board=%s,uid=%s,f_sys=%d,mpy=%s" % (chip, board, uid, machine.freq(), os.uname().release)
+
+
+MCU = mcu_info()
+
+
 def handle(line):
     global wdt_tripped
     parts = line.split()
@@ -106,7 +120,7 @@ def handle(line):
         return None
     cmd = parts[0].upper()
     if cmd == "IDN":
-        return "OK rail-dut,revA,%s,ina_in=%s,ina_load=%s" % (FW, u5.ids, u6.ids)
+        return "OK rail-dut,revA,%s,%s,ina_in=%s,ina_load=%s" % (FW_VERSION, MCU, u5.ids, u6.ids)
     if cmd == "EN":
         ch, on = int(parts[1]), int(parts[2])
         if not 1 <= ch <= 4:

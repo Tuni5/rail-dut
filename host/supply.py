@@ -82,8 +82,8 @@ class Supply:
     def is_on(self) -> bool:
         return self.call(psu.output_is_on)
 
-    def wait_for(self, volts: float) -> None:
-        self.call(psu.wait_for_voltage, volts)
+    def wait_for(self, volts: float, timeout_s: float = psu.ON_TIMEOUT_S) -> None:
+        self.call(psu.wait_for_voltage, volts, timeout_s)
 
     def read_state(self) -> dict:
         with self._lock:
