@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rail-dut · LM2596 rail bench</title>
+<script>
+  const THEMES = ["auto", "light", "dark"];
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+  function themeChoice() {
+    try { return THEMES.includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "auto"; }
+    catch { return "auto"; }
+  }
+  function applyTheme() {
+    const choice = themeChoice();
+    document.documentElement.dataset.theme = choice === "auto" ? (systemDark.matches ? "dark" : "light") : choice;
+    const b = document.getElementById("theme");
+    if (b) b.textContent = `Theme: ${choice}`;
+  }
+  systemDark.addEventListener("change", applyTheme);
+  applyTheme();
+</script>
+<style>
+  :root {
+    --bg: #eef0f3; --panel: #ffffff; --panel-2: #f6f7f9;
+    --ink: #1a2027; --muted: #5b6672; --rule: #d5dae0; --rule-2: #c3cad2;
+    --accent: #0b63ce; --accent-bg: #e3eefb; --ok: #2f9e44; --bad: #d9363e; --warn: #c98a00;
+    --on-accent: #ffffff; --ok-bg: #dff3e4; --bad-bg: #fbe1e2; --warn-bg: #f8edd0;
+    --s-vload: #0b63ce; --s-iload: #c26a00; --s-vin: #6b4fbb; --s-iin: #2f9e44;
+    --ph-L1: rgba(176, 64, 200, .10); --ph-L2: rgba(230, 140, 0, .12); --ph-L12: rgba(217, 54, 62, .10);
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #101419; --panel: #181d24; --panel-2: #1f252d;
+    --ink: #e4e8ec; --muted: #9aa4af; --rule: #2e3640; --rule-2: #3d4652;
+    --accent: #5aa2ff; --accent-bg: #16304f; --ok: #4cc26a; --bad: #ff6a70; --warn: #e0a72a;
+    --on-accent: #0b1420; --ok-bg: #1d4a2a; --bad-bg: #5a2327; --warn-bg: #5a4716;
+    --s-vload: #5aa2ff; --s-iload: #f0a040; --s-vin: #b39cff; --s-iin: #4cc26a;
+    --ph-L1: rgba(200, 110, 230, .14); --ph-L2: rgba(240, 160, 40, .14); --ph-L12: rgba(255, 106, 112, .14);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column;
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .mono, .num { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+           padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--rule); }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  .connections { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-left: auto; }
+  .connection { display: flex; align-items: center; gap: 6px; }
+  .connection b { font-weight: 600; font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); display: inline-block; }
+  .dot.on { background: var(--ok); }
+
+  .banner { margin: 12px 20px 0; padding: 10px 14px; border-radius: 6px; display: flex; gap: 12px; align-items: center;
+            background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+  .banner.prompt { background: var(--accent-bg); color: var(--accent); }
+  .banner .right { margin-left: auto; display: flex; gap: 8px; }
+
+  .layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px;
+            gap: 16px; padding: 16px 20px; }
+  main, aside { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 1150px) {
+    body { display: block; }
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    main, aside { overflow: visible; }
+  }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; }
+  .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px;
+               border-bottom: 1px solid var(--rule); }
+  .card-head h2 { font-size: 13px; font-weight: 600; margin: 0; }
+  .card-head .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .hint { font-size: 12.5px; color: var(--muted); }
+  .error { color: var(--bad); font-size: 13px; }
+
+  select, input[type=text], input[type=number] {
+    height: 32px; padding: 0 9px; border: 1px solid var(--rule-2); border-radius: 5px; background: var(--panel); }
+  input[type=number] { width: 80px; }
+  .btn { height: 32px; padding: 0 13px; border: 1px solid var(--rule-2); border-radius: 5px; background: var(--panel);
+         cursor: pointer; transition: background-color .12s, border-color .12s, transform .05s; }
+  .btn:hover:not(:disabled) { border-color: var(--muted); }
+  .btn:active:not(:disabled) { transform: translateY(1px); background: var(--panel-2); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .btn.danger { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  .btn.danger:hover:not(:disabled) { background: var(--bad); color: var(--on-accent); }
+  .btn.small { height: 26px; padding: 0 10px; font-size: 12px; }
+  .btn.toggle.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+  /* channel tiles */
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 800px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .tile { padding: 10px 12px; }
+  .tile.live { border: 2px solid var(--accent); padding: 9px 11px; }
+  .tile .top { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .tile .name { color: var(--muted); font-size: 12.5px; }
+  .tile .big { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .tile .sub { font-size: 12px; color: var(--muted); }
+  .pill { margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px;
+          background: var(--panel-2); color: var(--muted); }
+  .pill.running, .pill.waiting-j { background: var(--accent-bg); color: var(--accent); }
+  .pill.done { background: var(--ok-bg); color: var(--ok); }
+  .pill.fail, .pill.error { background: var(--bad-bg); color: var(--bad); }
+  .pill.skipped { background: var(--warn-bg); color: var(--warn); }
+
+  /* settings */
+  .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 22px; padding: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > .label { font-size: 12px; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--rule); }
+  .bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; flex: 1; min-width: 120px; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .25s; }
+
+  /* chart */
+  .chart { padding: 8px 14px 4px; }
+  .chart svg { display: block; width: 100%; height: 260px; }
+  .chart text { fill: var(--muted); font: 11px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  .chart .grid { stroke: var(--rule); stroke-width: 1; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  td.err { color: var(--bad); text-align: left; white-space: normal; }
+  tr.sub th { font-weight: 400; font-size: 11.5px; padding-top: 0; }
+  .table-wrap { overflow-x: auto; padding: 4px 4px 8px; }
+  .empty { padding: 30px 14px; text-align: center; color: var(--muted); }
+
+  /* aside */
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 14px; }
+  .readout div { background: var(--panel-2); border-radius: 5px; padding: 8px 10px; }
+  .readout span { display: block; font-size: 11.5px; color: var(--muted); }
+  .readout b { font-size: 18px; font-weight: 600; }
+  .panel { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .switches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .switches .btn { padding: 0; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 12.5px; }
+  .kv span { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>rail-dut <span>· LM2596 rail bench</span></h1>
+  <div class="connections">
+    <div class="connection"><i class="dot" id="pico-dot"></i><b>Pico</b>
+      <select id="pico-port"></select><button class="btn small" id="pico-conn">Connect</button></div>
+    <div class="connection"><i class="dot" id="psu-dot"></i><b>Supply</b>
+      <select id="psu-port"></select><button class="btn small" id="psu-conn">Connect</button></div>
+    <button class="btn small" id="theme">Theme</button>
+    <button class="btn danger" id="all-off">All off</button>
+  </div>
+</header>
+<div class="banner" id="trip" hidden></div>
+<div class="banner prompt" id="prompt" hidden><span id="prompt-text"></span>
+  <div class="right"><button class="btn small" id="skip">Skip channel</button><button class="btn small primary" id="go">Continue</button></div></div>
+
+<div class="layout">
+<main>
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <div class="card-head"><h2>Sequence</h2><span class="hint" id="plan"></span></div>
+    <div class="settings">
+      <div class="field"><span class="label">Channels</span><div class="row" id="set-ch"></div></div>
+      <div class="field"><span class="label">VIN points (V, from the supply)</span>
+        <div class="row"><input type="text" id="set-vin" class="mono" style="width:130px">
+          <label class="check"><input type="checkbox" id="set-supply" checked>use supply</label></div></div>
+      <div class="field"><span class="label">Load phases</span><div class="row" id="set-ph"></div></div>
+      <div class="field"><span class="label">Per phase / gap (s)</span>
+        <div class="row"><input type="number" id="set-phase" step="0.5" min="0.8"><input type="number" id="set-gap" step="0.5" min="0"></div></div>
+      <div class="field"><span class="label">Options</span>
+        <label class="check"><input type="checkbox" id="set-jumper" checked>ask before each channel (J2)</label>
+        <label class="check"><input type="checkbox" id="set-psuoff" checked>supply off at the end</label></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="start">Start</button>
+      <button class="btn" id="stop" disabled>Stop</button>
+      <div class="bar"><i id="progress"></i></div>
+      <span class="hint" id="run-line">idle</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Live</h2>
+      <div class="legend" id="legend"></div>
+      <div class="right"><select id="view"><option value="out">VLOAD + Iload</option><option value="in">VIN + Iin</option></select>
+        <select id="span"><option value="30">30 s</option><option value="120">2 min</option><option value="600">10 min</option></select></div></div>
+    <div class="chart"><svg id="chart" viewBox="0 0 800 260" preserveAspectRatio="none"></svg></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Results</h2><span class="hint">phase mean, first 0.4 s after each switch left out</span>
+      <div class="right"><a class="btn small" id="csv" href="/api/run/csv" download style="display:inline-flex;align-items:center;text-decoration:none">CSV</a></div></div>
+    <div class="table-wrap" id="results"><div class="empty">No run yet.</div></div>
+    <div class="table-wrap" id="linereg"></div>
+  </section>
+</main>
+
+<aside>
+  <section class="card">
+    <div class="card-head"><h2>Now</h2><span class="hint" id="now-label"></span></div>
+    <div class="readout">
+      <div><span>VIN</span><b class="num" id="r-vin">–</b></div>
+      <div><span>Iin</span><b class="num" id="r-iin">–</b></div>
+      <div><span>VLOAD</span><b class="num" id="r-vload">–</b></div>
+      <div><span>Iload</span><b class="num" id="r-iload">–</b></div>
+      <div><span>Pin / Pout (W)</span><b class="num" id="r-p">–</b></div>
+      <div><span>Efficiency</span><b class="num" id="r-eta">–</b></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Manual</h2><span class="hint">only without a run</span></div>
+    <div class="panel">
+      <div class="switches" id="sw-en"></div>
+      <div class="switches" id="sw-load"></div>
+      <div class="row"><button class="btn small" id="zero">Zero Iload</button><span class="hint num" id="offset"></span></div>
+      <div class="hint" id="pico-ident"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Supply</h2><span class="hint" id="psu-ident"></span></div>
+    <div class="panel">
+      <div class="row"><input type="number" id="psu-v" step="0.1" min="0" max="24" placeholder="V">
+        <input type="number" id="psu-a" step="0.05" min="0" max="2" placeholder="A">
+        <button class="btn small" id="psu-set">Set</button></div>
+      <div class="row"><button class="btn small" id="psu-on">Output on</button><button class="btn small" id="psu-off">Output off</button>
+        <button class="btn small" id="psu-read">Read</button></div>
+      <div class="kv num" id="psu-state"></div>
+      <div class="error" id="psu-err"></div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Voltage check</h2><span class="hint">multimeter vs board, nothing is corrected</span></div>
+    <div class="panel">
+      <div class="row"><span style="width:52px">VIN</span><input type="number" id="chk-vin" step="0.001" placeholder="meter V">
+        <button class="btn small" data-chk="vin">Check</button><span class="hint num" id="now-vin"></span></div>
+      <div class="row"><span style="width:52px">VLOAD</span><input type="number" id="chk-vload" step="0.001" placeholder="meter V">
+        <button class="btn small" data-chk="vload">Check</button><span class="hint num" id="now-vload"></span></div>
+      <div class="hint">Board value is the mean of the last second. OK within ±0.3 % (meter 0.1 % + 2 digits, INA226 0.1 %).</div>
+      <table id="checks"></table>
+      <div class="error" id="chk-err"></div>
+    </div>
+  </section>
+  <div class="error" id="err"></div>
+</aside>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { board: null, next: 0, samples: [], status: null, busy: false };
+const fmt = (v, d) => v == null || Number.isNaN(v) ? "–" : Number(v).toFixed(d);
+
+async function api(path, body) {
+  const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+function report(e, where = "err") { $(where).textContent = e ? (e.message || String(e)) : ""; }
+
+$("theme").onclick = () => {
+  const next = THEMES[(THEMES.indexOf(themeChoice()) + 1) % THEMES.length];
+  try { localStorage.setItem("theme", next); } catch {}
+  applyTheme(); drawChart();
+};
+
+// ---- setup ---------------------------------------------------------------
+async function init() {
+  state.board = await api("/api/board");
+  const b = state.board, d = b.defaults;
+  $("set-ch").innerHTML = [1, 2, 3, 4].map(c => `<label class="check"><input type="checkbox" value="${c}" checked>CH${c}</label>`).join("");
+  $("set-ph").innerHTML = Object.entries(b.phases).map(([k, n]) =>
+    `<label class="check"><input type="checkbox" value="${k}" ${d.phases.includes(k) ? "checked" : ""}>${n}</label>`).join("");
+  $("set-vin").value = d.vin_points.join(" ");
+  $("set-phase").value = d.phase_s; $("set-gap").value = d.gap_s;
+  $("sw-en").innerHTML = [1, 2, 3, 4].map(c => `<button class="btn small toggle" data-en="${c}">EN${c}</button>`).join("");
+  $("sw-load").innerHTML = [1, 2].map(n => `<button class="btn small toggle" data-load="${n}" style="grid-column:span 2">LOAD${n} · ${b.loads["L" + n]} Ω</button>`).join("");
+  document.querySelectorAll("[data-en]").forEach(el => el.onclick = () =>
+    api("/api/pico/en", { n: +el.dataset.en, on: !el.classList.contains("active") }).then(() => report()).catch(report));
+  document.querySelectorAll("[data-load]").forEach(el => el.onclick = () =>
+    api("/api/pico/load", { n: +el.dataset.load, on: !el.classList.contains("active") }).then(() => report()).catch(report));
+  document.querySelectorAll("#set-ch input, #set-ph input, #set-vin, #set-phase, #set-gap, #set-supply").forEach(el => el.oninput = showPlan);
+  await loadPorts();
+  showPlan();
+  tick();
+}
+
+async function loadPorts() {
+  const ports = await api("/api/ports");
+  const keep = [$("pico-port").value, $("psu-port").value];
+  $("pico-port").innerHTML = ports.map(p => `<option>${p}</option>`).join("");
+  $("psu-port").innerHTML = `<option value="">auto</option>` + ports.map(p => `<option>${p}</option>`).join("");
+  if (keep[0]) $("pico-port").value = keep[0];
+  if (keep[1] !== undefined) $("psu-port").value = keep[1];
+}
+
+function readSettings() {
+  const checked = sel => [...document.querySelectorAll(sel + " input:checked")].map(i => i.value);
+  return {
+    channels: checked("#set-ch").map(Number),
+    use_supply: $("set-supply").checked,
+    vin_points: $("set-vin").value.split(/[\s,;]+/).filter(Boolean).map(Number),
+    phases: checked("#set-ph"),
+    phase_s: +$("set-phase").value, gap_s: +$("set-gap").value,
+    jumper_prompt: $("set-jumper").checked, supply_off_at_end: $("set-psuoff").checked,
+  };
+}
+function showPlan() {
+  const s = readSettings();
+  const points = s.use_supply ? s.vin_points.length : 1;
+  const secs = s.channels.length * points * (s.phases.length * s.phase_s + s.gap_s + 0.6 + (s.use_supply ? 1.5 : 0));
+  $("plan").textContent = `${s.channels.length} ch × ${points} VIN × ${s.phases.length} phases · about ${Math.round(secs)} s plus jumper moves`;
+  $("set-vin").disabled = !s.use_supply;
+}
+
+// ---- buttons -------------------------------------------------------------
+$("pico-conn").onclick = async () => {
+  try {
+    if (state.status?.pico.connected) await api("/api/pico/disconnect", {});
+    else await api("/api/pico/connect", { port: $("pico-port").value });
+    report();
+  } catch (e) { report(e); }
+};
+$("psu-conn").onclick = async () => {
+  try {
+    if (state.status?.supply.connected) await api("/api/supply/disconnect", {});
+    else { await api("/api/supply/connect", { port: $("psu-port").value || null }); await psuRead(); }
+    report(null, "psu-err");
+  } catch (e) { report(e, "psu-err"); }
+};
+$("all-off").onclick = () => api("/api/pico/off", {}).then(() => report()).catch(report);
+$("start").onclick = () => api("/api/run/start", readSettings()).then(() => report()).catch(report);
+$("stop").onclick = () => api("/api/run/stop", {}).catch(report);
+$("go").onclick = () => api("/api/run/continue", { skip: false }).catch(report);
+$("skip").onclick = () => api("/api/run/continue", { skip: true }).catch(report);
+
+async function psuRead() { try { showPsu(await api("/api/supply/read")); report(null, "psu-err"); } catch (e) { report(e, "psu-err"); } }
+function showPsu(s) {
+  $("psu-state").innerHTML = s ? `<span>set</span><b>${fmt(s.v_set, 3)} V · ${fmt(s.i_set, 3)} A</b>
+    <span>read</span><b>${fmt(s.v, 3)} V · ${fmt(s.i, 3)} A</b><span>output</span><b style="color:var(--${s.on ? "ok" : "muted"})">${s.on ? "ON" : "off"}</b>` : "";
+}
+$("psu-read").onclick = psuRead;
+$("psu-set").onclick = async () => {
+  const v = $("psu-v").value, a = $("psu-a").value;
+  try { showPsu(await api("/api/supply/set", { volts: v === "" ? null : +v, amps: a === "" ? null : +a })); report(null, "psu-err"); }
+  catch (e) { report(e, "psu-err"); }
+};
+$("psu-on").onclick = () => api("/api/supply/output", { on: true }).then(showPsu).catch(e => report(e, "psu-err"));
+$("psu-off").onclick = () => api("/api/supply/output", { on: false }).then(showPsu).catch(e => report(e, "psu-err"));
+$("view").onchange = drawChart; $("span").onchange = drawChart;
+$("zero").onclick = () => api("/api/pico/zero", {}).then(() => report()).catch(report);
+document.querySelectorAll("[data-chk]").forEach(el => el.onclick = async () => {
+  const which = el.dataset.chk, v = $("chk-" + which).value;
+  if (v === "" || +v <= 0) { report(new Error("Enter the meter reading first"), "chk-err"); return; }
+  try { await api("/api/check/voltage", { which, dmm: +v }); report(null, "chk-err"); } catch (e) { report(e, "chk-err"); }
+});
+
+// ---- polling -------------------------------------------------------------
+async function tick() {
+  try {
+    const st = await api(`/api/status?since=${state.next}`);
+    state.status = st;
+    if (st.next < state.next) state.samples = [];          // server restarted
+    state.samples.push(...st.samples);
+    state.next = st.next;
+    if (state.samples.length > 6000) state.samples.splice(0, state.samples.length - 6000);
+    render(st);
+  } catch (e) { report(new Error("server not reachable")); }
+  setTimeout(tick, 300);
+}
+
+function render(st) {
+  const run = st.run, active = run && (run.state === "running" || run.state === "waiting");
+  $("pico-dot").classList.toggle("on", st.pico.connected);
+  $("psu-dot").classList.toggle("on", st.supply.connected);
+  $("pico-conn").textContent = st.pico.connected ? "Disconnect" : "Connect";
+  $("psu-conn").textContent = st.supply.connected ? "Disconnect" : "Connect";
+  $("pico-port").disabled = st.pico.connected; $("psu-port").disabled = st.supply.connected;
+  $("pico-ident").textContent = st.pico.connected ? `${st.pico.port} · ${st.pico.identity}` + (st.pico.error ? ` · ${st.pico.error}` : "") : "Pico not connected";
+  $("psu-ident").textContent = st.supply.connected ? `${st.supply.port}` : "";
+  if (st.supply.last) showPsu(st.supply.last);
+
+  $("trip").hidden = !st.trip; $("trip").textContent = st.trip || "";
+  const waiting = run?.state === "waiting";
+  $("prompt").hidden = !waiting; $("prompt-text").textContent = waiting ? run.message : "";
+
+  $("start").disabled = active || !st.pico.connected;
+  $("stop").disabled = !active;
+  $("progress").style.width = run ? `${Math.round(100 * run.step / Math.max(1, run.steps))}%` : "0";
+  if (run) {
+    const c = run.current, ph = c.phase ? (state.board.phases[c.phase] || c.phase) : "";
+    $("run-line").textContent = active
+      ? `${c.ch ? "CH" + c.ch : ""}${c.vin_set != null ? ` · ${c.vin_set} V` : ""}${ph ? (c.ch ? " · " : "") + ph : ""} · step ${run.step}/${run.steps}`
+      : `${run.state}${run.message ? ": " + run.message : ""} · ${run.stamp}`;
+  }
+  const manual = st.pico.connected && !active;
+  document.querySelectorAll("[data-en],[data-load]").forEach(el => el.disabled = !manual);
+  $("zero").disabled = !manual;
+  $("offset").textContent = st.pico.connected ? `Iload offset ${fmt(st.iload_offset * 1000, 2)} mA` : "";
+  $("checks").innerHTML = st.checks.length ? `<tr><th>Time</th><th>Signal</th><th>Board</th><th>Meter</th><th>Dev.</th></tr>` +
+    st.checks.slice().reverse().map(c => `<tr><td>${c.time.slice(11)}</td><td>${c.which.toUpperCase()}</td><td class="num">${fmt(c.board, 4)}</td>
+      <td class="num">${fmt(c.dmm, 4)}</td><td class="num" style="color:var(--${c.ok ? "ok" : "bad"})">${c.dev_pct > 0 ? "+" : ""}${fmt(c.dev_pct, 3)} %</td></tr>`).join("") : "";
+  const ps = st.pico.state;
+  if (ps) {
+    document.querySelectorAll("[data-en]").forEach(el => el.classList.toggle("active", ps.en[el.dataset.en - 1]));
+    document.querySelectorAll("[data-load]").forEach(el => el.classList.toggle("active", ps.load[el.dataset.load - 1]));
+  }
+  renderNow(); renderTiles(run); renderResults(run); drawChart();
+}
+
+function renderNow() {
+  const s = state.samples[state.samples.length - 1];
+  if (!s) return;
+  const pin = s.vin * s.iin, pout = s.vload * s.iload;
+  $("r-vin").textContent = fmt(s.vin, 3) + " V"; $("r-iin").textContent = fmt(s.iin * 1000, 1) + " mA";
+  $("r-vload").textContent = fmt(s.vload, 3) + " V"; $("r-iload").textContent = fmt(s.iload * 1000, 1) + " mA";
+  $("r-p").textContent = `${fmt(pin, 2)} / ${fmt(pout, 2)}`;
+  $("r-eta").textContent = pin > 0.2 && pout > 0.1 ? fmt(100 * pout / pin, 1) + " %" : "–";
+  $("now-vin").textContent = `board ${fmt(s.vin, 3)} V`; $("now-vload").textContent = `board ${fmt(s.vload, 3)} V`;
+  $("now-label").textContent = s.ch ? `CH${s.ch} · ${state.board.phases[s.phase] || s.phase || ""}` : "";
+}
+
+function renderTiles(run) {
+  const b = state.board, tbl = run?.table || [];
+  $("tiles").innerHTML = [1, 2, 3, 4].map(ch => {
+    const st = run?.channel_state?.[ch] || "–";
+    const live = run && run.current?.ch === ch && (run.state === "running" || run.state === "waiting");
+    const lines = tbl.filter(l => l.ch === ch && !l.error);
+    const last = lines[lines.length - 1];
+    const main = last && (last.phases.L1 || Object.values(last.phases)[0]);
+    const heavy = last && (last.phases.L12 || last.phases.L1);
+    const pill = live && run.state === "waiting" ? "jumper" : st;
+    const cls = pill === "jumper" ? "waiting-j" : st;
+    return `<div class="card tile${live ? " live" : ""}">
+      <div class="top">CH${ch}<span class="pill ${cls}">${pill}</span></div>
+      <div class="name">${b.channels[ch].name}</div>
+      <div class="big num">${main ? fmt(main.vload, 3) + " V" : "–"}</div>
+      <div class="sub num">${heavy ? `η ${fmt(100 * heavy.eta, 1)} % @ ${fmt(heavy.iload, 2)} A` : "&nbsp;"}${last?.vin_set != null ? ` · ${last.vin_set} V in` : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderResults(run) {
+  if (!run || !run.table.length) { $("results").innerHTML = `<div class="empty">No run yet.</div>`; $("linereg").innerHTML = ""; return; }
+  const phases = run.settings.phases, names = state.board.phases, b = state.board;
+  let h = `<table><tr><th>Channel</th><th>VIN</th>${phases.map(p => `<th colspan="3">${names[p]}</th>`).join("")}<th>Load reg.</th></tr>
+    <tr class="sub"><th></th><th>V</th>${phases.map(() => `<th>VLOAD V</th><th>Iload A</th><th>η %</th>`).join("")}<th>mV (ΔI A)</th></tr>`;
+  for (const l of run.table) {
+    const head = `<td>CH${l.ch} ${b.channels[l.ch].name}</td><td class="num">${l.vin != null ? fmt(l.vin, 2) : (l.vin_set ?? "–")}</td>`;
+    if (l.error) { h += `<tr>${head}<td class="err" colspan="${phases.length * 3 + 1}">${l.error}</td></tr>`; continue; }
+    h += `<tr>${head}${phases.map(p => { const x = l.phases[p];
+      return x ? `<td class="num">${fmt(x.vload, 3)}</td><td class="num">${fmt(x.iload, 3)}</td><td class="num">${x.eta == null ? "–" : fmt(100 * x.eta, 1)}</td>` : `<td></td><td></td><td></td>`; }).join("")}
+      <td class="num">${l.load_reg_mv != null ? `${fmt(l.load_reg_mv, 1)} (${fmt(l.load_reg_di, 2)})` : "–"}</td></tr>`;
+  }
+  $("results").innerHTML = h + "</table>";
+  const lr = run.line_reg || {}, chs = Object.keys(lr);
+  $("linereg").innerHTML = chs.length ? `<table><tr><th>Line regulation (VLOAD spread over VIN)</th>${phases.map(p => `<th>${names[p]} mV</th>`).join("")}</tr>
+    ${chs.map(ch => `<tr><td>CH${ch} ${b.channels[ch].name}</td>${phases.map(p => `<td class="num">${lr[ch][p] != null ? fmt(lr[ch][p], 1) : "–"}</td>`).join("")}</tr>`).join("")}</table>` : "";
+}
+
+// ---- chart ---------------------------------------------------------------
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function drawChart() {
+  const svg = $("chart"), W = 800, H = 260, L = 52, R = 56, T = 12, B = 24;
+  const view = $("view").value, span = +$("span").value;
+  const [kv, ki, cv, ci, nv, ni] = view === "out" ? ["vload", "iload", "--s-vload", "--s-iload", "VLOAD", "Iload"]
+                                                  : ["vin", "iin", "--s-vin", "--s-iin", "VIN", "Iin"];
+  $("legend").innerHTML = `<span><i style="background:var(${cv})"></i>${nv} (left)</span><span><i style="background:var(${ci})"></i>${ni} (right)</span>`;
+  const all = state.samples;
+  if (!all.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">no samples yet: connect the Pico</text>`; return; }
+  const tEnd = all[all.length - 1].t, tStart = tEnd - span;
+  const pts = all.filter(s => s.t >= tStart);
+  const vs = pts.map(s => s[kv]).filter(v => v > 0.05), is = pts.map(s => s[ki]);
+  let vMin = vs.length ? Math.min(...vs) : 0, vMax = vs.length ? Math.max(...vs) : 1;
+  const pad = Math.max(0.01, (vMax - vMin) * 0.15); vMin -= pad; vMax += pad;
+  const iMax = Math.max(0.1, ...is) * 1.15;
+  const x = t => L + (t - tStart) / span * (W - L - R);
+  const yv = v => T + (1 - (v - vMin) / (vMax - vMin)) * (H - T - B);
+  const yi = i => T + (1 - i / iMax) * (H - T - B);
+  let g = "";
+  // phase bands
+  let band = null;
+  const flush = (end) => { if (band && css("--ph-" + band.ph)) g += `<rect x="${x(band.t0)}" y="${T}" width="${Math.max(0, x(end) - x(band.t0))}" height="${H - T - B}" fill="${css("--ph-" + band.ph)}"/>`; };
+  for (const s of pts) {
+    if (!band || band.ph !== s.phase) { flush(s.t); band = { ph: s.phase, t0: s.t }; }
+  }
+  flush(tEnd);
+  for (let k = 0; k <= 4; k++) {
+    const yy = T + k * (H - T - B) / 4, v = vMax - k * (vMax - vMin) / 4, i = iMax - k * iMax / 4;
+    g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/>`;
+    g += `<text x="${L - 6}" y="${yy + 4}" text-anchor="end">${v.toFixed(3)}</text><text x="${W - R + 6}" y="${yy + 4}">${(i).toFixed(2)}</text>`;
+  }
+  g += `<text x="${L}" y="${H - 6}">−${span} s</text><text x="${W - R}" y="${H - 6}" text-anchor="end">now</text>`;
+  const line = (key, y, color, skipLow) => {
+    let d = "", gap = true, prev = null;
+    for (const s of pts) {
+      if (prev && s.t - prev.t > 2) gap = true;
+      if (skipLow && s[key] < 0.05) { gap = true; prev = s; continue; }
+      d += `${gap ? "M" : "L"}${x(s.t).toFixed(1)},${y(s[key]).toFixed(1)}`; gap = false; prev = s;
+    }
+    return `<path d="${d}" fill="none" stroke="${css(color)}" stroke-width="1.8" vector-effect="non-scaling-stroke"/>`;
+  };
+  g += line(ki, yi, ci, false) + line(kv, yv, cv, true);
+  svg.innerHTML = g;
+}
+
+init().catch(e => report(e));
+</script>
+</body>
+</html>

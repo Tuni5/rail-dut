@@ -1,0 +1,7 @@
+# Host side (PC), Python 3.11 or newer.
+pyserial>=3.5
+pyvisa>=1.13          # OWON supply, through bench/psu.py from power-rail-bench
+pyvisa-py>=0.7.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+mpremote>=1.22

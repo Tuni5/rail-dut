@@ -1,0 +1,28 @@
+# rail-dut rev A: what is fitted on THIS board. Edit when a chip changes.
+
+[channels.1]
+name = "TI"
+part = "LM2596S-5.0"
+[channels.2]
+name = "UMW"
+part = "LM2596S-5.0"
+[channels.3]
+name = "TECH PUBLIC"
+part = "LM2596S-5.0"
+[channels.4]
+name = "JM64RJ"
+part = "LM2596S-ADJ, suspect (R18 3.09k / R19 1k)"
+
+[loads]
+L1 = 5.04    # ohm, measured
+L2 = 10.1
+
+[limits]
+iin_max_a = 1.6      # input current above this: everything off
+iload_max_a = 1.6    # INA226 full scale is 1.638 A with 50 mOhm
+
+[defaults]
+vin_points = [8.0, 16.0, 24.0]
+phases = ["L1", "L2", "L12"]
+phase_s = 2.5
+gap_s = 1.0
