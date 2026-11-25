@@ -1,0 +1,25 @@
+{
+  "note": "Measurement campaign 2026-11: CH1..CH3 the same on every board, CH4 = DUT. M1 / M2: the two Amazon 'LM2596' modules. name = default run name in the GUI.",
+  "boards": {
+    "1": {
+      "ch4": "M1 counterfeit JM64RJ",
+      "name": "Board_1-M1_JM64RJ"
+    },
+    "2": {
+      "ch4": "M2 counterfeit JM93XRP",
+      "name": "Board_2-M2_JM93XRP"
+    },
+    "3": {
+      "ch4": "M1 counterfeit JM64RJ",
+      "name": "Board_3-M1_JM64RJ"
+    },
+    "4": {
+      "ch4": "M2 counterfeit JM93XRP",
+      "name": "Board_4-M2_JM93XRP"
+    },
+    "5": {
+      "ch4": "TI LM2596 ADJ original",
+      "name": "Board_5-TI_LM2596_adj"
+    }
+  }
+}

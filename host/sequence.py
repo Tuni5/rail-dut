@@ -7,8 +7,6 @@ Sequence: per channel (Load Select jumper moved by hand), per VIN point, per loa
 Phase mean = samples of that phase after SETTLE_S, so the label lag is gone.
 """
 
-import csv
-import json
 import threading
 import time
 from collections import deque
@@ -16,6 +14,8 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 from pico import PicoError, PicoLink
+import runfile
+from scope import Scope, ScopeError, analyse
 from supply import Supply
 from bench.psu import PsuError
 
@@ -23,6 +23,7 @@ LOG_S = 0.25
 SETTLE_S = 0.4            # samples this soon after a phase change are not averaged
 ZERO_S = 1.0              # Iload offset: averaged this long with EN and LOAD off
 SUPPLY_STEP_S = 1.5       # typical time for the supply to settle on a new setpoint (plan only)
+SCOPE_CAPTURE_S = 2.0     # screenshot + ASCII waveform over LAN: plan until the first capture is timed
 VIN_SETTLE_TIMEOUT_S = 10.0   # supply readout must reach a new setpoint within this
 # Stepping VIN down: the OWON cannot sink current, so with no load the input capacitors
 # stay charged for minutes (24 V -> 8 V failed after 2 s on the bench, 2026-11-22).
@@ -135,6 +136,9 @@ class Settings:
     gap_s: float = 1.0
     jumper_prompt: bool = True
     supply_off_at_end: bool = True
+    scope_capture: bool = False   # one RTM2034 snapshot per load phase, probe on the channel's switch node
+    name: str = ""                # free text, e.g. "Board_5-TI_LM2596_adj"; the folder stays the start time
+    board: int | None = None      # board number of the campaign (board.toml [boards]); sets CH4's name
 
 
 @dataclass
@@ -152,12 +156,18 @@ class Run:
     t0: float = 0.0                   # sampler time at the start: x = 0 of the run graphs
     plan_s: float = 0.0               # planned duration without jumper waits
     waited_s: float = 0.0             # time spent waiting for the jumper so far
+    capture_s: list = field(default_factory=list)   # measured duration of each scope capture
     t_end: float | None = None        # sampler time when the run ended
+    samples: list = field(default_factory=list)     # every INA226 sample of the run
+    waves: dict = field(default_factory=dict)       # scope waveform per snapshot, key = picture name
+    meta: dict = field(default_factory=dict)        # channel names, instruments, as at the start
+    merge_into: str | None = None     # repeat run: stamp of the run whose channel it replaces when done
 
 
 class Sequencer:
-    def __init__(self, pico: PicoLink, supply: Supply, sampler: Sampler, runs_dir: Path, channels: dict):
-        self.pico, self.supply, self.sampler = pico, supply, sampler
+    def __init__(self, pico: PicoLink, supply: Supply, sampler: Sampler, runs_dir: Path, channels: dict,
+                 scope: Scope):
+        self.pico, self.supply, self.sampler, self.scope = pico, supply, sampler, scope
         self.runs_dir = runs_dir
         self.channels = channels
         self.run: Run | None = None
@@ -165,25 +175,34 @@ class Sequencer:
         self._stop = threading.Event()
         self._go = threading.Event()
         self._skip = False
-        self._raw = None
 
     @property
     def active(self) -> bool:
         return self.run is not None and self.run.state in ("running", "waiting")
 
     # --- control from the API -------------------------------------------------
-    def start(self, settings: Settings) -> Run:
+    def start(self, settings: Settings, channels: dict | None = None, merge_into: str | None = None) -> Run:
+        """channels: names for this run (CH4 from the chosen board); default the board file's.
+        merge_into: stamp of a finished run whose channel this (one-channel) run replaces when done."""
         if self.active:
             raise RuntimeError("a run is already active")
         if not self.pico.connected:
             raise RuntimeError("Pico is not connected")
         if settings.use_supply and not self.supply.connected:
             raise RuntimeError("supply is not connected (or untick 'Use supply')")
+        if settings.scope_capture and not self.scope.connected:
+            raise RuntimeError("scope is not connected (or untick 'scope snapshot per phase')")
         stamp = time.strftime("%Y%m%d-%H%M%S")
         n_vin = len(settings.vin_points) if settings.use_supply else 1
         run = Run(settings=settings, stamp=stamp,
                   steps=len(settings.channels) * n_vin * len(settings.phases),
                   channel_state={ch: "waiting" for ch in settings.channels})
+        run.meta = {"channels": channels or self.channels, "pico": self.pico.identity, "pico_info": self.pico.info,
+                    "supply": self.supply.identity if settings.use_supply else None,
+                    "scope": self.scope.identity if settings.scope_capture else None,
+                    # simulated scope: pictures are replayed or modelled, never measurements
+                    "scope_sim": bool(settings.scope_capture and self.scope.resource == "SIM")}
+        run.merge_into = merge_into
         run.t0 = self.sampler.now()
         run.plan_s = plan_seconds(settings)
         self.run = run
@@ -205,18 +224,13 @@ class Sequencer:
     def _main(self):
         run, s = self.run, self.run.settings
         final = ("error", "unexpected stop")
-        self.runs_dir.mkdir(exist_ok=True)
-        self._raw = open(self.runs_dir / f"{run.stamp}_rail.jsonl", "w")
         self.sampler.on_sample = None
         try:
             self.pico.off()
             run.current = {"phase": "zero"}
             run.iload_offset = self.sampler.zero()
-            self._raw.write(json.dumps({"head": asdict(s), "channels": self.channels,
-                                        "pico": self.pico.identity, "pico_info": self.pico.info,
-                                        "supply": self.supply.identity,
-                                        "iload_offset_a": run.iload_offset}) + "\n")
-            self.sampler.on_sample = lambda smp: self._raw.write(json.dumps(smp) + "\n")
+            self.sampler.on_sample = run.samples.append
+            self._save()
             if s.use_supply:
                 self.supply.prepare()
             for ch in s.channels:
@@ -243,28 +257,21 @@ class Sequencer:
                     pass
             self.sampler.label = {}
             self.sampler.on_sample = None
-            self._raw.close()
-            self._write_csv()
             run.current = {}
             run.t_end = self.sampler.now()
             run.state, run.message = final
+            self._save()
+            self._merge()
 
     def _channel(self, ch: int):
         run, s = self.run, self.run.settings
         run.channel_state[ch] = "running"
         if s.jumper_prompt:
-            run.state, run.message = "waiting", f"Set the Load Select jumper to CH{ch}, then continue"
-            run.current = {"ch": ch}
-            self.pico.led("cyan")
-            self.sampler.label = {"phase": "jumper"}      # belongs to no channel in the graphs
-            self._go.clear()
-            t_wait = time.time()
-            self._go.wait()
-            run.waited_s += time.time() - t_wait
-            run.state, run.message = "running", ""
-            if self._stop.is_set():
+            probe = f" and the scope probe on the CH{ch} switch node" if s.scope_capture else ""
+            answer = self._ask(ch, "jumper", f"Set the Load Select jumper to CH{ch}{probe}, then continue")
+            if answer == "stop":
                 return
-            if self._skip:
+            if answer == "skip":
                 run.channel_state[ch] = "skipped"
                 run.step += (len(s.vin_points) if s.use_supply else 1) * len(s.phases)
                 return
@@ -279,9 +286,11 @@ class Sequencer:
                     return
             # the setpoint after this one: next VIN of this channel, or the first of the next channel
             nxt = points[k + 1] if k + 1 < len(points) else (points[0] if later else None)
-            ok = self._point(ch, vin_set, nxt)
-            if not ok:
-                run.channel_state[ch] = "fail"
+            result = self._point(ch, vin_set, nxt)
+            if result == "stop":
+                return
+            if result == "skip":
+                run.channel_state[ch] = "skipped"
                 run.step += len(s.phases) * (len(points) - points.index(vin_set))
                 return
         run.channel_state[ch] = "done"
@@ -291,10 +300,10 @@ class Sequencer:
         (Load Select is on this channel here, the prompt came before)."""
         run = self.run
         self.supply.set_voltage(vin_set)
-        if not self.supply.is_on():
-            self.supply.output(True)                  # ramps up and waits (psu.py)
-            self.supply.read_state()
-            return
+        was_on = self.supply.is_on()
+        # Also with the output off: right after a run that ended at 24 V the input capacitors still
+        # hold ~20 V, and switching on at 8 V then fails in psu.py's ramp check (2026-11-25, a repeat
+        # started right after its run). So discharge first in both cases.
         vin_now = self.pico.read()[0]
         if vin_now > vin_set + DISCHARGE_MARGIN_V:
             self.sampler.label = {"ch": ch, "vin_set": vin_set, "phase": "discharge"}
@@ -315,22 +324,37 @@ class Sequencer:
             finally:
                 self.pico.load(1, False)
                 self.pico.en(ch, False)
+        if not was_on:
+            self.supply.output(True)                  # ramps up and waits (psu.py)
+            self.supply.read_state()
+            return
         self.supply.wait_for(vin_set, VIN_SETTLE_TIMEOUT_S)
         self.supply.read_state()
 
     def _point(self, ch: int, vin_set, next_vin=None):
         run, s = self.run, self.run.settings
         label = {"ch": ch, "vin_set": vin_set}
-        self.sampler.label = {**label, "phase": "EN"}
-        run.current = {**label, "phase": "EN"}
-        self.pico.en(ch, True)
-        self._sleep(EN_SETTLE_S)
-        vload = self.pico.read()[2]
-        if vload < MIN_VLOAD_V:
+        # No output on the load after EN: mostly Load Select not moved to this channel. The run
+        # does not go on to the next channel by itself; it waits for retry (after fixing) or skip.
+        while True:
+            self.sampler.label = {**label, "phase": "EN"}
+            run.current = {**label, "phase": "EN"}
+            self.pico.en(ch, True)
+            self._sleep(EN_SETTLE_S)
+            if self._stop.is_set():
+                return "stop"
+            vload = self.pico.read()[2]
+            if vload >= MIN_VLOAD_V:
+                break
             self.pico.en(ch, False)
-            run.rows.append({**label, "phase": "EN", "error": f"no output on LOAD: VLOAD {vload:.3f} V "
-                             f"(Load Select on CH{ch}? regulator on?)"})
-            return False
+            answer = self._ask(ch, "no_output", f"No output on the load from CH{ch}: VLOAD {vload:.3f} V. "
+                               f"Is Load Select on CH{ch}? Fix it, then retry", vin_set=vin_set, vload=round(vload, 3))
+            if answer == "stop":
+                return "stop"
+            if answer == "skip":
+                run.rows.append({**label, "phase": "EN", "error": f"skipped: no output on the load "
+                                 f"(VLOAD {vload:.3f} V; Load Select on CH{ch}? regulator on?)"})
+                return "skip"
         for phase in s.phases:
             if self._stop.is_set():
                 break
@@ -343,8 +367,16 @@ class Sequencer:
             t0 = self.sampler.now()
             self._sleep(s.phase_s)
             t1 = self.sampler.now()
-            run.rows.append({**label, "phase": phase, **mean(self.sampler.window(t0 + SETTLE_S, t1))})
+            row = {**label, "phase": phase, **mean(self.sampler.window(t0 + SETTLE_S, t1))}
+            if s.scope_capture:
+                tc = time.time()
+                row["scope"] = self._snapshot(ch, vin_set, phase, row.get("vin"))   # load still on: same operating point
+                # the time axis follows the real capture time instead of the 2 s guess
+                run.capture_s.append(time.time() - tc)
+                run.plan_s = plan_seconds(s, sum(run.capture_s) / len(run.capture_s))
+            run.rows.append(row)
             run.step += 1
+            self._save()
             if phase == s.phases[-1] and next_vin is not None and vin_set is not None and next_vin < vin_set:
                 self._step_down_under_load(ch, vin_set, next_vin)
             self.pico.load(1, False)
@@ -355,6 +387,19 @@ class Sequencer:
         run.current = {**label, "phase": "gap"}
         self._sleep(s.gap_s)
         return True
+
+    def _snapshot(self, ch: int, vin_set, phase: str, vin) -> dict:
+        """Screenshot and waveform of the switch node for this phase. A failed capture is
+        recorded with the phase and does not stop the run."""
+        name = f"CH{ch}_{'manual' if vin_set is None else f'{vin_set:g}V'}_{PHASE_NAMES[phase]}"
+        folder = runfile.folder(self.runs_dir, self.run.stamp)
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            path, t, v = self.scope.capture(folder / f"{name}.png", vin)
+            self.run.waves[path.name] = runfile.wave_entry(t, v)
+            return {"png": path.name, **analyse(t, v, vin)}
+        except (ScopeError, OSError) as error:
+            return {"error": f"capture failed: {error}"}
 
     def _step_down_under_load(self, ch: int, vin_set: float, target: float):
         """Send the lower setpoint while the load is still on and keep it on until VIN follows.
@@ -383,26 +428,77 @@ class Sequencer:
         except PicoError:
             pass
 
-    def _write_csv(self):
+    def _ask(self, ch: int, wait: str, message: str, **extra) -> str:
+        """Hold the run until the user answers in the GUI: "go" (continue / retry), "skip" or "stop".
+        The waiting time is no measurement time: labelled "jumper", cut out of the graphs."""
         run = self.run
-        path = self.runs_dir / f"{run.stamp}_rail.csv"
-        keys = ["ch", "name", "vin_set", "phase", "n", "vin", "iin", "vload", "iload", "pin", "pout", "eta", "error"]
-        with open(path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-            w.writeheader()
-            for r in run.rows:
-                w.writerow({**r, "name": self.channels.get(r["ch"], {}).get("name", ""),
-                            "phase": PHASE_NAMES.get(r["phase"], r["phase"])})
+        run.state, run.message = "waiting", message
+        run.current = {"ch": ch, "wait": wait, **extra}
+        self.pico.led("cyan")
+        self.sampler.label = {"phase": "jumper"}
+        self._skip = False
+        self._go.clear()
+        t_wait = time.time()
+        self._go.wait()
+        run.waited_s += time.time() - t_wait
+        run.state, run.message = "running", ""
+        if self._stop.is_set():
+            return "stop"
+        return "skip" if self._skip else "go"
+
+    def rename(self, name: str):
+        """Name of the current run; written to its file at once."""
+        self.run.settings.name = name
+        self._save()
+
+    def _merge(self):
+        """Repeat run: when its channel was measured completely, it replaces that channel in the
+        original run. Otherwise the original stays untouched (the repeat is still saved on its own)."""
+        run = self.run
+        if not run.merge_into:
+            return
+        ch = run.settings.channels[0]
+        if run.state != "done" or run.channel_state.get(ch) != "done":
+            why = f" ({run.message})" if run.message else ""
+            run.message = f"CH{ch} not complete{why}: run {run.merge_into} left as it was"
+        else:
+            try:
+                note = runfile.merge_channel(self.runs_dir, run.merge_into, to_file(run), ch, table, line_regulation)
+                run.message = f"{note}: replaces CH{ch} in {run.merge_into}"
+            except (OSError, ValueError, KeyError) as error:
+                run.message = f"merge into {run.merge_into} failed: {error}"
+        self._save()
+
+    def _save(self):
+        """Write the run file. A failed write is reported in the run message, the run goes on."""
+        try:
+            runfile.save(runfile.file(self.runs_dir, self.run.stamp), to_file(self.run))
+        except OSError as error:
+            self.run.message = f"run file not written: {error}"
+
+
+def to_file(run: Run) -> dict:
+    """Everything of a run for runs/<stamp>/run_<stamp>.json."""
+    return {"format": runfile.FORMAT, "stamp": run.stamp, "state": run.state, "message": run.message,
+            "settings": asdict(run.settings), **run.meta, "merge_into": run.merge_into,
+            "steps": run.steps, "step": run.step, "channel_state": run.channel_state,
+            "iload_offset": run.iload_offset, "t0": run.t0, "t_end": run.t_end, "plan_s": run.plan_s,
+            "waited_s": round(run.waited_s, 1), "capture_s": [round(x, 2) for x in run.capture_s],
+            "rows": run.rows, "table": table(run.rows, run.settings.phases),
+            "line_reg": line_regulation(run.rows),
+            "samples": list(run.samples), "waves": dict(run.waves)}
 
 
 class Abort(Exception):
     pass
 
 
-def plan_seconds(s: Settings) -> float:
-    """Expected run time without the jumper waits: what the graphs use as their time axis."""
+def plan_seconds(s: Settings, capture_s: float = SCOPE_CAPTURE_S) -> float:
+    """Expected run time without the jumper waits: what the graphs use as their time axis.
+    capture_s: time per scope snapshot, the guess at the start, the measured mean once known."""
     points = len(s.vin_points) if s.use_supply else 1
-    per_point = EN_SETTLE_S + len(s.phases) * s.phase_s + s.gap_s + (SUPPLY_STEP_S if s.use_supply else 0)
+    per_phase = s.phase_s + (capture_s if s.scope_capture else 0)
+    per_point = EN_SETTLE_S + len(s.phases) * per_phase + s.gap_s + (SUPPLY_STEP_S if s.use_supply else 0)
     return round(0.3 + ZERO_S + len(s.channels) * points * per_point, 1)
 
 
@@ -429,7 +525,8 @@ def table(rows: list[dict], phases: list[str]) -> list[dict]:
             line["error"] = r["error"]
             continue
         line["vin"] = r["vin"]
-        line["phases"][r["phase"]] = {"vload": r["vload"], "iload": r["iload"], "eta": r["eta"]}
+        line["phases"][r["phase"]] = {"vload": r["vload"], "iload": r["iload"], "eta": r["eta"],
+                                      "scope": r.get("scope")}
     for line in out:
         # load regulation: VLOAD from the lightest to the heaviest measured load, whichever phases those are
         p = list(line["phases"].values())

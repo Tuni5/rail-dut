@@ -13,6 +13,9 @@ PSU_PORT = None                 # "COM7" to pin it; None = find by USB vendor ID
 PSU_PROBE_VIDS = {0x1A86}       # CH340 bridge inside the supply
 PSU_BAUD = 115200               # instrument menu setting
 
+# --- Scope: Rohde & Schwarz RTM2034, raw SCPI socket over LAN ----------------
+SCOPE_RESOURCE = "TCPIP0::192.168.77.1::5025::SOCKET"     # rail-dut bench LAN (2026-11-25)
+
 # --- rail-dut board limits -----------------------------------------------------
 # VIN of the board: ON/OFF pins of the LM2596 are rated 25 V, so 24 V is the top.
 # Below about 7 V a 5 V buck has no headroom left; lower setpoints are refused.

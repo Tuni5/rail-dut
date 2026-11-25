@@ -1,4 +1,5 @@
-# rail-dut rev A: what is fitted on THIS board. Edit when a chip changes.
+# rail-dut rev A: channels CH1..CH3 are the same on every board; CH4 is the device under test and
+# differs per board, see boards.json. The run takes CH4's name from the board chosen in the GUI.
 
 [channels.1]
 name = "TI"
@@ -10,8 +11,10 @@ part = "LM2596S-5.0"
 name = "TECH PUBLIC"
 part = "LM2596S-5.0"
 [channels.4]
-name = "JM64RJ"
-part = "LM2596S-ADJ, suspect (R18 3.09k / R19 1k)"
+name = "CH4 DUT"                # replaced by the chosen board's ch4
+part = "LM2596S-ADJ footprint (R18 3.09k / R19 1k)"
+
+# The boards of the campaign (CH4 DUT per board) are in boards.json; the GUI adds new ones there.
 
 [loads]
 # ohm, measured. Swapped on purpose (2026-11-22): the current rises over a point,

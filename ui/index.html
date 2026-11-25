@@ -62,11 +62,52 @@
             background: var(--bad-bg); color: var(--bad); font-weight: 600; }
   /* Load Select prompt: the run waits for a hand on the board, so the run row turns yellow */
   .actions.waitrow { background: var(--warn-bg); border-top: 2px solid var(--warn); border-radius: 0 0 6px 6px; }
-  .inl { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .inl { display: flex; align-items: center; gap: 12px; flex: 1; margin-left: 14px; }
   .inl .big { font-size: 16px; font-weight: 700; color: var(--warn); }
   .inl .sub { font-size: 13px; }
-  .inl .r { margin-left: auto; display: flex; gap: 8px; }
+  .inl .r { margin-left: 28px; display: flex; gap: 20px; }     /* right after the hint, not at the far edge */
+  #stop { margin-left: 10px; }
   .inl .btn.primary { background: var(--warn); border-color: var(--warn); color: #1a1200; }
+  .run-name { font-weight: 600; font-size: 13px; }
+  .simtag { color: #fff; background: var(--bad); font-weight: 700; font-size: 12px; letter-spacing: .04em;
+            padding: 1px 8px; border-radius: 4px; }
+  .simtag[hidden] { display: none; }
+  mark.flag { background: none; color: var(--bad); }
+  .run-name:empty { display: none; }
+  #rename-box, #repeat-box { display: inline-flex; gap: 6px; align-items: center; }
+  /* scope strip: one thumbnail per load phase, at the same x as that phase in the graphs */
+  .strip { position: relative; }
+  .strip .unit { position: absolute; font-size: 11px; color: var(--muted); font-weight: 600; text-align: right; }
+  .strip .th { position: absolute; cursor: zoom-in; }
+  .strip .th img { display: block; width: 100%; border-radius: 3px; border: 1px solid var(--rule-2); background: #000; }
+  .strip .th:hover img, .strip .th.on img { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .strip .th .c { font: 10.5px ui-monospace, "Cascadia Mono", Consolas, monospace; text-align: center; margin-top: 2px;
+                  font-variant-numeric: tabular-nums; color: var(--ink); }
+  .strip .th .c.bad { color: var(--bad); }
+  .strip .tip { bottom: 100%; margin-bottom: 8px; }
+  .strip .tip img { width: 420px; }
+  .viewer { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.65); display: flex; align-items: center;
+            justify-content: center; cursor: zoom-out; }
+  .viewer .vbox { background: var(--panel); border: 1px solid var(--rule-2); border-radius: 8px; padding: 12px 14px;
+                  max-width: 94vw; cursor: default; display: flex; flex-direction: column; gap: 10px; }
+  .vhead { display: flex; align-items: baseline; gap: 14px; }
+  .vhead .t { font-size: 15px; font-weight: 600; }
+  .vhead .pos { margin-left: auto; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .vmain { display: flex; align-items: center; gap: 10px; }
+  .vmain img { display: block; max-width: 74vw; max-height: 62vh; border-radius: 4px; background: #000; }
+  .vnav { width: 44px; height: 88px; font-size: 30px; line-height: 1; padding: 0; flex: none; }
+  .vfacts { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; }
+  .vfacts span { color: var(--muted); margin-right: 6px; }
+  .vfacts b { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-weight: 600; }
+  .vfilm { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; max-width: calc(74vw + 108px); }
+  .vfilm .grp { display: flex; flex-direction: column; gap: 3px; flex: none; }
+  .vfilm .grp .gl { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .vfilm .grp .gi { display: flex; gap: 3px; }
+  .vfilm img { width: 64px; height: 38px; object-fit: contain; background: #000; border: 1px solid var(--rule-2);
+               border-radius: 3px; cursor: pointer; opacity: .6; }
+  .vfilm img:hover { opacity: 1; }
+  .vfilm img.on { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tip img { display: block; width: 190px; margin-top: 6px; border-radius: 3px; border: 1px solid var(--rule); }
   /* hover readout on the graphs */
   .chart { position: relative; }
   .tip { position: absolute; pointer-events: none; z-index: 3; background: var(--panel); border: 1px solid var(--rule-2);
@@ -109,10 +150,12 @@
   .btn.toggle.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
   /* channel tiles */
-  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  /* channel tiles: flush row at the top of the Live card */
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--rule); }
   @media (max-width: 800px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  .tile { padding: 10px 12px; }
-  .tile.live { border: 2px solid var(--accent); padding: 9px 11px; }
+  .tile { padding: 10px 14px; border-right: 1px solid var(--rule); }
+  .tile:last-child { border-right: 0; }
+  .tile.live { box-shadow: inset 0 0 0 2px var(--accent); }
   .tile .top { display: flex; align-items: center; gap: 8px; font-weight: 600; }
   .tile .name { color: var(--muted); font-size: 12.5px; }
   .tile .big { font-size: 22px; font-weight: 600; margin-top: 4px; }
@@ -181,6 +224,10 @@
       <select id="pico-port"></select><button class="btn small" id="pico-conn">Connect</button></div>
     <div class="connection"><i class="dot" id="psu-dot"></i><b id="psu-name">Supply</b>
       <select id="psu-port"></select><button class="btn small" id="psu-conn">Connect</button></div>
+    <div class="connection"><i class="dot" id="scope-dot"></i><b id="scope-name">Scope</b>
+      <input type="text" id="scope-addr" class="mono" style="width:250px" spellcheck="false" list="scope-list"
+             title="pick from the list or type a VISA address"><datalist id="scope-list"></datalist>
+      <button class="btn small" id="scope-conn">Connect</button></div>
     <button class="btn small" id="theme">Theme</button>
     <button class="btn danger" id="all-off">All off</button>
   </div>
@@ -189,11 +236,17 @@
 
 <div class="layout">
 <main>
-  <div class="tiles" id="tiles"></div>
-
   <section class="card">
     <div class="card-head"><h2>Sequence</h2><span class="hint" id="plan"></span></div>
     <div class="settings">
+      <div class="field"><span class="label">Board (CH4 = DUT) and run name</span>
+        <div class="row"><select id="set-board" style="flex:1;min-width:0"></select>
+          <button class="btn small" id="board-add" title="new board of the campaign">Add board</button></div>
+        <div class="row" id="board-new" hidden>
+          <input type="text" id="new-ch4" maxlength="60" placeholder="CH4 DUT, e.g. M1 counterfeit JM64RJ" spellcheck="false" style="flex:1;min-width:0">
+          <button class="btn small primary" id="board-save">Save</button><button class="btn small" id="board-cancel">Cancel</button></div>
+        <input type="text" id="set-name" maxlength="80" placeholder="run name" spellcheck="false">
+        <span class="error" id="board-err"></span></div>
       <div class="field"><span class="label">Channels</span><div class="row" id="set-ch"></div></div>
       <div class="field"><span class="label">VIN points (V, from the supply)</span>
         <div class="row"><input type="text" id="set-vin" class="mono" style="width:130px">
@@ -205,33 +258,55 @@
         <div class="row"><input type="number" id="set-phase" step="0.5" min="1"><input type="number" id="set-gap" step="0.5" min="0"></div></div>
       <div class="field"><span class="label">Options</span>
         <label class="check"><input type="checkbox" id="set-jumper" checked>ask before each channel (Load Select jumper)</label>
-        <label class="check"><input type="checkbox" id="set-psuoff" checked>supply off at the end</label></div>
+        <label class="check"><input type="checkbox" id="set-psuoff" checked>supply off at the end</label>
+        <label class="check"><input type="checkbox" id="set-scope">scope snapshot per load phase (probe moves with Load Select)</label></div>
     </div>
     <div class="actions">
       <button class="btn primary" id="start">Start</button>
       <button class="btn" id="stop" disabled>Stop</button>
       <span id="inline-prompt" class="inl" hidden><span class="big" id="inl-big"></span>
-        <span class="sub">Set the jumper on the board, then continue</span>
-        <span class="r"><button class="btn" id="skip">Skip channel</button><button class="btn primary" id="go">Continue</button></span></span>
+        <span class="sub" id="inl-sub"></span>
+        <span class="r"><button class="btn primary" id="go">Continue</button><button class="btn" id="skip">Skip channel</button></span></span>
       <div class="bar" id="bar"><i id="progress"></i></div>
       <span class="hint" id="run-line">idle</span>
     </div>
   </section>
 
   <section class="card">
-    <div class="card-head"><h2>Live</h2><span class="hint">click a legend entry to hide it; the axis rescales</span>
-</div>
+    <div class="card-head"><h2 id="live-title">Live</h2>
+      <span id="run-name" class="run-name"></span>
+      <button class="btn small" id="rename" hidden>Rename</button>
+      <span id="rename-box" hidden><input type="text" id="rename-input" maxlength="80" spellcheck="false" style="width:280px;height:26px">
+        <button class="btn small primary" id="rename-save">Save</button><button class="btn small" id="rename-cancel">Cancel</button></span>
+      <span id="repeat-box" hidden><select id="repeat-ch" style="height:26px;padding:0 6px"></select>
+        <button class="btn small" id="repeat" title="measure this channel again with the run's settings; it replaces the old one in this run">Repeat channel</button></span>
+      <span class="hint" id="live-hint">click a legend entry to hide it; the axis rescales</span>
+      <div class="right"><span class="hint">Run</span><select id="run-pick" title="open a saved run from the runs folder"></select></div></div>
+    <div class="tiles" id="tiles"></div>
     <div class="graph"><div class="graph-head"><h3>Voltage</h3><span id="lg-v"></span></div><div class="chart"><svg id="g-v"></svg><div class="tip" id="tip-v" hidden></div></div></div>
     <div class="graph"><div class="graph-head"><h3>Current</h3><span id="lg-i"></span></div><div class="chart"><svg id="g-i"></svg><div class="tip" id="tip-i" hidden></div></div></div>
+    <div class="graph" id="strip-wrap" hidden><div class="graph-head"><h3>Scope</h3>
+      <span class="simtag" id="strip-sim" hidden>SIMULATED DATA</span>
+      <span class="hint">switch node per load phase, under its place in the run · f_sw from the waveform, ringing not counted · hover to enlarge, click to open the gallery</span></div>
+      <div class="strip" id="strip"></div></div>
   </section>
 
   <section class="card">
     <div class="card-head"><h2>Results</h2><span class="hint">phase mean, first 0.4 s after each switch left out</span>
-      <div class="right"><a class="btn small" id="csv" href="/api/run/csv" download style="display:inline-flex;align-items:center;text-decoration:none">CSV</a></div></div>
+      <div class="right"><a class="btn small" id="csv" href="#" download style="display:inline-flex;align-items:center;text-decoration:none">CSV</a></div></div>
     <div class="table-wrap" id="results"><div class="empty">No run yet.</div></div>
     <div class="table-wrap" id="linereg"></div>
   </section>
+
 </main>
+<div class="viewer" id="viewer" hidden><div class="vbox">
+  <div class="vhead"><span class="t" id="viewer-cap"></span><span class="simtag" id="viewer-sim" hidden>SIMULATED DATA</span><span class="pos" id="viewer-pos"></span>
+    <button class="btn small" id="viewer-close" title="Esc">Close</button></div>
+  <div class="vmain"><button class="btn vnav" id="viewer-prev" title="previous (←)">‹</button><img id="viewer-img" alt="">
+    <button class="btn vnav" id="viewer-next" title="next (→)">›</button></div>
+  <div class="vfacts" id="viewer-facts"></div>
+  <div class="vfilm" id="viewer-film"></div>
+</div></div>
 
 <aside>
   <section class="card">
@@ -287,7 +362,18 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const state = { board: null, next: 0, samples: [], status: null, busy: false };
+const state = { board: null, next: 0, samples: [], status: null, busy: false, view: null, gallery: { items: [], i: 0 } };
+// The run on screen: a saved run opened with the Run selector, otherwise the current one.
+// Its samples come from its file; the live samples keep feeding the Now panel.
+function shownRun() { return state.view ? state.view.run : state.status?.run; }
+// channel names as the shown run stored them (the part on a channel can change between boards)
+function chName(ch) {
+  const run = shownRun();
+  if (run?.channels?.[ch]) return run.channels[ch].name;
+  const b = state.board.boards?.[$("set-board").value];       // no run yet: the board chosen for the next one
+  return ch === 4 && b ? b.ch4 : state.board.channels[ch]?.name || "";
+}
+function shownSamples() { return state.view ? state.view.samples : state.samples; }
 const fmt = (v, d) => {
   if (v == null || Number.isNaN(Number(v))) return "–";
   const t = Number(v).toFixed(d);
@@ -317,6 +403,13 @@ async function init() {
   $("set-ph").innerHTML = Object.entries(b.phases).map(([k, n]) =>
     `<label class="check"><input type="checkbox" value="${k}" ${d.phases.includes(k) ? "checked" : ""}>${n}</label>`).join("");
   $("set-vin").value = d.vin_points.join(" ");
+  // board of the campaign: no preselection, the run does not start without one
+  fillBoards();
+  $("set-board").onchange = () => {
+    const x = b.boards[$("set-board").value];
+    $("set-name").value = x ? x.name : ""; $("board-err").textContent = "";
+    if (state.status) render(state.status);
+  };
   $("set-phase").value = d.phase_s; $("set-gap").value = d.gap_s;
   $("sw-en").innerHTML = [1, 2, 3, 4].map(c => `<button class="btn small toggle" data-en="${c}">EN${c}</button>`).join("");
   $("sw-load").innerHTML = [1, 2].map(n => `<button class="btn small toggle" data-load="${n}" style="grid-column:span 2">LOAD${n} · ${b.loads["L" + n]} Ω</button>`).join("");
@@ -329,6 +422,7 @@ async function init() {
   for (const [id, lo] of [["set-phase", 1], ["set-gap", 0]])
     $(id).onchange = () => { const v = Number($(id).value); $(id).value = Math.max(lo, Math.round((Number.isFinite(v) ? v : lo) * 2) / 2); showPlan(); };
   await loadPorts();
+  await loadRuns();
   showPlan();
   tick();
 }
@@ -352,6 +446,9 @@ function readSettings() {
     phases: checked("#set-ph"),
     phase_s: +$("set-phase").value, gap_s: +$("set-gap").value,
     jumper_prompt: $("set-jumper").checked, supply_off_at_end: $("set-psuoff").checked,
+    scope_capture: $("set-scope").checked,
+    name: $("set-name").value.trim(),
+    board: $("set-board").value ? Number($("set-board").value) : null,
   };
 }
 // Same limits the server enforces (host/bench/config.py), checked here so the error shows at the field.
@@ -390,12 +487,151 @@ $("psu-conn").onclick = async () => {
     report(null, "psu-err");
   } catch (e) { report(e, "psu-err"); }
 };
+$("scope-conn").onclick = async () => {
+  try {
+    if (state.status?.scope.connected) await api("/api/scope/disconnect", {});
+    else {
+      await api("/api/scope/connect", { port: $("scope-addr").value || null });
+      $("set-scope").checked = true; showPlan();
+    }
+    report();
+  } catch (e) { report(e); }
+};
+$("scope-addr").onfocus = () => { $("scope-addr").dataset.prev = $("scope-addr").value; $("scope-addr").value = ""; };
+$("scope-addr").onblur = () => { if (!$("scope-addr").value) $("scope-addr").value = $("scope-addr").dataset.prev || ""; };
+// Gallery over the scope pictures of the shown run, in run order: ‹ › or ← →, film strip grouped by
+// channel and VIN; click outside the box or Esc closes.
+$("viewer").onclick = e => { if (e.target === $("viewer")) $("viewer").hidden = true; };
+$("viewer-close").onclick = () => { $("viewer").hidden = true; };
+$("viewer-prev").onclick = () => galleryShow(state.gallery.i - 1);
+$("viewer-next").onclick = () => galleryShow(state.gallery.i + 1);
+document.addEventListener("keydown", e => {
+  if ($("viewer").hidden) return;
+  if (e.key === "Escape") $("viewer").hidden = true;
+  if (e.key === "ArrowLeft") galleryShow(state.gallery.i - 1);
+  if (e.key === "ArrowRight") galleryShow(state.gallery.i + 1);
+});
+function galleryOpen(items, i) {
+  state.gallery = { items: items.filter(k => k.sc.png), i: 0 };
+  const g = state.gallery, names = state.board.phases;
+  g.i = Math.max(0, g.items.findIndex(k => k === items[i]));
+  // film strip: one group per channel and VIN, thumbnails in phase order
+  const groups = [];
+  g.items.forEach((k, j) => {
+    const key = `${k.ch}|${k.vin_set}`;
+    if (!groups.length || groups[groups.length - 1].key !== key) groups.push({ key, k, js: [] });
+    groups[groups.length - 1].js.push(j);
+  });
+  $("viewer-film").innerHTML = groups.map(gr => `<div class="grp"><span class="gl">CH${gr.k.ch}${gr.k.vin_set != null ? ` · ${gr.k.vin_set} V` : ""}</span>
+    <div class="gi">${gr.js.map(j => `<img data-j="${j}" src="${snapUrl(g.items[j].sc.png)}" title="${names[g.items[j].phase]}" alt="">`).join("")}</div></div>`).join("");
+  $("viewer-film").querySelectorAll("img").forEach(im => im.onclick = () => galleryShow(+im.dataset.j));
+  $("viewer").hidden = false;
+  galleryShow(g.i);
+}
+function galleryShow(i) {
+  const g = state.gallery, n = g.items.length;
+  if (!n) return;
+  g.i = (i + n) % n;                                   // wraps around at both ends
+  const k = g.items[g.i], sc = k.sc, r = k.r, names = state.board.phases;
+  $("viewer-img").src = snapUrl(sc.png);
+  $("viewer-cap").textContent = `CH${k.ch} ${chName(k.ch)}${k.vin_set != null ? ` · ${k.vin_set} V` : ""} · ${names[k.phase]}`;
+  $("viewer-pos").textContent = `${g.i + 1} / ${n}`;
+  $("viewer-sim").hidden = !shownRun()?.scope_sim;
+  const f = (label, v) => `<div><span>${label}</span><b>${v}</b></div>`;
+  $("viewer-facts").innerHTML =
+    (sc.f_sw != null ? f("f_sw", `${fmt(sc.f_sw / 1000, 1)} kHz`) + f("duty", `${fmt(sc.duty * 100, 1)} %`) +
+                       f("period", spreadHtml(sc)) : f("scope", sc.error || "no f_sw")) +
+    (sc.tdiv_us != null ? f("window", `${fmt(sc.tdiv_us, 0)} µs/div`) : "") +
+    (sc.vpp != null ? f("Vpp", `${fmt(sc.vpp, 2)} V`) : "") +
+    (r.vin != null ? f("VIN", `${fmt(r.vin, 3)} V`) : "") +
+    (r.vload != null ? f("VLOAD", `${fmt(r.vload, 3)} V`) + f("Iload", `${fmt(r.iload * 1000, 0)} mA`) : "") +
+    (r.eta != null ? f("η", `${fmt(r.eta * 100, 1)} %`) : "");
+  $("viewer-film").querySelectorAll("img").forEach(im => {
+    const on = +im.dataset.j === g.i;
+    im.classList.toggle("on", on);
+    if (on) im.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+}
 $("all-off").onclick = () => api("/api/pico/off", {}).then(() => report()).catch(report);
 $("start").onclick = () => {
   const s = readSettings(), bad = vinError(s);
+  if (Object.keys(state.board.boards || {}).length && s.board == null) {
+    $("board-err").textContent = "Choose the board first: it names CH4 and the run."; $("set-board").focus(); return;
+  }
   if (bad) { $("vin-err").textContent = bad; $("set-vin").focus(); return; }
-  api("/api/run/start", s).then(() => report()).catch(report);
+  api("/api/run/start", s).then(() => { closeView(); report(); }).catch(report);
 };
+
+// ---- saved runs: one folder per run (runs\<stamp>), opened here from its run file ----
+function runLabel(r) {
+  const chs = r.channels.length === 4 ? "CH1–4" : r.channels.map(c => "CH" + c).join(" ");
+  return `${r.name ? r.name + " · " : r.board ? `Board ${r.board} · ` : ""}${r.stamp} · ${chs}${r.vin_points.length ? " · " + r.vin_points.join("/") + " V" : ""}${r.scope ? (r.scope_sim ? " · SIM scope" : " · scope") : ""}${r.state !== "done" ? " · " + r.state : ""}`;
+}
+async function loadRuns() {
+  const list = await api("/api/runs"), sel = $("run-pick"), keep = state.view?.run.stamp || "";
+  sel.innerHTML = `<option value="">current</option>` + list.map(r => `<option value="${r.stamp}">${runLabel(r)}</option>`).join("");
+  sel.value = list.some(r => r.stamp === keep) ? keep : "";
+}
+async function openView(stamp) {
+  if (!stamp) { closeView(); return; }
+  const d = await api(`/api/runs/${encodeURIComponent(stamp)}`);
+  state.view = { run: d.run, samples: d.samples };
+  state.hover = null; $("strip").dataset.key = "";
+  render(state.status);
+}
+function closeView() {
+  state.view = null; state.hover = null; $("run-pick").value = ""; $("strip").dataset.key = "";
+  if (state.status) render(state.status);
+}
+$("run-pick").onfocus = () => loadRuns().catch(report);
+
+// ---- boards of the campaign (host/boards.json): choose one per run, add new ones here ----
+function fillBoards(select) {
+  const boards = Object.entries(state.board.boards || {});
+  $("set-board").innerHTML = `<option value="">choose the board …</option>` +
+    boards.map(([n, x]) => `<option value="${n}">Board ${n} · ${x.ch4}</option>`).join("");
+  if (select != null) { $("set-board").value = String(select); $("set-board").onchange(); }
+}
+function boardNew(on) {
+  $("board-new").hidden = !on; $("board-add").hidden = on;
+  if (on) { $("new-ch4").value = ""; $("new-ch4").focus(); }
+}
+$("board-add").onclick = () => boardNew(true);
+$("board-cancel").onclick = () => boardNew(false);
+$("board-save").onclick = async () => {
+  const ch4 = $("new-ch4").value.trim();
+  if (!ch4) { $("board-err").textContent = "Enter what sits on CH4."; $("new-ch4").focus(); return; }
+  try {
+    const r = await api("/api/boards", { ch4 });
+    state.board.boards[r.board] = { ch4: r.ch4, name: r.name };
+    boardNew(false); fillBoards(r.board);
+  } catch (e) { report(e); }
+};
+$("new-ch4").onkeydown = e => { if (e.key === "Enter") $("board-save").click(); if (e.key === "Escape") boardNew(false); };
+// rename the shown run (current or saved); the name goes into its run file
+function renameOpen(on) {
+  $("rename-box").hidden = !on; $("run-name").hidden = on; $("rename").hidden = on;
+  if (on) { $("rename-input").value = shownRun()?.settings.name || ""; $("rename-input").focus(); }
+}
+$("rename").onclick = () => renameOpen(true);
+$("repeat").onclick = async () => {
+  const run = shownRun(); if (!run) return;
+  try {
+    await api(`/api/runs/${encodeURIComponent(run.stamp)}/repeat`, { ch: Number($("repeat-ch").value) });
+    closeView(); report();
+  } catch (e) { report(e); }
+};
+$("rename-cancel").onclick = () => renameOpen(false);
+$("rename-save").onclick = async () => {
+  const run = shownRun(); if (!run) return;
+  try {
+    const r = await api(`/api/runs/${encodeURIComponent(run.stamp)}/name`, { name: $("rename-input").value });
+    if (state.view && state.view.run.stamp === run.stamp) state.view.run.settings.name = r.name;
+    renameOpen(false); await loadRuns(); render(state.status);
+  } catch (e) { report(e); }
+};
+$("rename-input").onkeydown = e => { if (e.key === "Enter") $("rename-save").click(); if (e.key === "Escape") renameOpen(false); };
+$("run-pick").onchange = () => openView($("run-pick").value).catch(report);
 $("stop").onclick = () => api("/api/run/stop", {}).catch(report);
 $("go").onclick = () => api("/api/run/continue", { skip: false }).catch(report);
 $("skip").onclick = () => api("/api/run/continue", { skip: true }).catch(report);
@@ -461,12 +697,35 @@ function render(st) {
   $("psu-title").textContent = model ? `Supply · ${model}` : "Supply";
   $("psu-ident").textContent = st.supply.connected ? `${st.supply.port} · ${st.supply.identity}` : "not connected";
   if (st.supply.last) showPsu(st.supply.last);
+  const sc = st.scope;
+  $("scope-dot").classList.toggle("on", sc.connected);
+  $("scope-conn").textContent = sc.connected ? "Disconnect" : "Connect";
+  $("scope-addr").disabled = sc.connected;
+  if (!$("scope-addr").dataset.init) {
+    $("scope-list").innerHTML = `<option value="${sc.default}"></option><option value="SIM"></option>`;
+    if (!$("scope-addr").value) $("scope-addr").value = sc.default;
+    $("scope-addr").dataset.init = "1";
+  }
+  if (sc.connected) $("scope-addr").value = sc.resource;
+  // name from the instrument's own *IDN? answer ("Rohde&Schwarz,RTM2034,..."): model only
+  $("scope-name").textContent = sc.connected && sc.identity ? sc.identity.split(",")[1] || "Scope" : "Scope";
+  $("set-scope").disabled = !sc.connected;
+  if (!sc.connected) $("set-scope").checked = false;
 
   $("trip").hidden = !st.trip; $("trip").textContent = st.trip || "";
   const waiting = run?.state === "waiting";
   // Load Select prompt: the whole run row turns yellow, progress and status line step aside
   $("inline-prompt").hidden = !waiting;
-  $("inl-big").textContent = waiting ? `Load Select → CH${run.current.ch}` : "";
+  // two reasons to wait: the Load Select prompt before a channel, or no output on the load after EN
+  const noOut = waiting && run.current.wait === "no_output";
+  $("inl-big").textContent = !waiting ? "" : noOut ? `No output · CH${run.current.ch}` : `Load Select → CH${run.current.ch}`;
+  $("inl-sub").textContent = !waiting ? "" : noOut
+    ? `VLOAD ${fmt(run.current.vload, 3)} V after EN${run.current.vin_set != null ? ` at ${run.current.vin_set} V in` : ""}. ` +
+      `Is Load Select on CH${run.current.ch}? Fix it, then retry`
+    : run.settings.scope_capture
+    ? `Set the jumper and move the scope probe to the CH${run.current.ch} switch node, then continue`
+    : "Set the jumper on the board, then continue";
+  $("go").textContent = noOut ? "Retry" : "Continue";
   $("run-line").hidden = waiting;
   $("bar").hidden = waiting;
   $("start").closest(".actions").classList.toggle("waitrow", waiting);
@@ -492,7 +751,27 @@ function render(st) {
     document.querySelectorAll("[data-en]").forEach(el => el.classList.toggle("active", ps.en[el.dataset.en - 1]));
     document.querySelectorAll("[data-load]").forEach(el => el.classList.toggle("active", ps.load[el.dataset.load - 1]));
   }
-  renderNow(); renderTiles(run); renderResults(run); drawChart();
+  const shown = shownRun();
+  $("live-title").textContent = state.view ? "Saved run" : "Live";
+  if ($("rename-box").hidden) {
+    $("run-name").textContent = shown?.settings.name || (shown ? "unnamed" : "");
+    $("run-name").style.color = shown?.settings.name ? "" : "var(--muted)";
+    $("rename").hidden = !shown;
+  }
+  const reps = (shown?.repeats || []).map(r => `CH${r.ch} repeated (run ${r.by})`).join(" · ");
+  $("live-hint").textContent = (state.view ? `runs\\${shown.stamp} · ${shown.state} · opened from its file`
+                                           : shown?.merge_into ? `repeat for run ${shown.merge_into}: replaces its channel when done`
+                                           : "click a legend entry to hide it; the axis rescales") + (reps ? " · " + reps : "");
+  // repeat one channel of a finished run (not while a run is active, not for a repeat run itself)
+  const canRepeat = shown && !active && !["running", "waiting"].includes(shown.state) && !shown.merge_into;
+  $("repeat-box").hidden = !canRepeat;
+  if (canRepeat && $("repeat-ch").dataset.stamp !== shown.stamp) {
+    $("repeat-ch").innerHTML = shown.settings.channels.map(c => `<option value="${c}">CH${c}</option>`).join("");
+    $("repeat-ch").dataset.stamp = shown.stamp;
+  }
+  $("csv").hidden = !shown;
+  if (shown) { $("csv").href = `/api/runs/${encodeURIComponent(shown.stamp)}/csv`; $("csv").download = `rail_${shown.stamp}.csv`; }
+  renderNow(); renderTiles(shown); renderResults(shown); drawChart();
 }
 
 function renderNow() {
@@ -516,15 +795,97 @@ function renderTiles(run) {
     const last = lines[lines.length - 1];
     const main = last && (last.phases.L1 || Object.values(last.phases)[0]);
     const heavy = last && (last.phases.L12 || last.phases.L1);
-    const pill = live && run.state === "waiting" ? "jumper" : st;
-    const cls = pill === "jumper" ? "waiting-j" : st;
-    return `<div class="card tile${live ? " live" : ""}">
+    const pill = live && run.state === "waiting" ? (run.current.wait === "no_output" ? "no output" : "jumper") : st;
+    const cls = pill === "jumper" ? "waiting-j" : pill === "no output" ? "fail" : st;
+    return `<div class="tile${live ? " live" : ""}">
       <div class="top">CH${ch}<span class="pill ${cls}">${pill}</span></div>
-      <div class="name">${b.channels[ch].name}</div>
+      <div class="name">${chName(ch)}</div>
       <div class="big num">${main ? fmt(main.vload, 3) + " V" : "–"}</div>
       <div class="sub num">${heavy ? `η ${fmt(100 * heavy.eta, 1)} % @ ${fmt(heavy.iload, 2)} A` : "&nbsp;"}${last?.vin_set != null ? ` · ${last.vin_set} V in` : ""}</div>
     </div>`;
   }).join("");
+}
+
+// Scope strip under the graphs: one thumbnail per load phase, placed under that phase's block
+// of the time axis (same x as the graphs). Hover: large picture with the numbers, click: full size.
+function snapUrl(png) { return `/api/runs/${encodeURIComponent(shownRun().stamp)}/file/${encodeURIComponent(png)}`; }
+// period spread of the switching: a genuine LM2596 stays well under 1 %; above this it is flagged
+const SPREAD_FLAG = 0.05;
+function spreadHtml(sc) {
+  if (sc.spread == null) return "–";
+  const txt = `${fmt(sc.period_min_us, 1)}–${fmt(sc.period_max_us, 1)} µs · spread ${fmt(sc.spread * 100, sc.spread < 0.1 ? 1 : 0)} %`;
+  return sc.spread > SPREAD_FLAG ? `<mark class="flag">${txt}</mark>` : txt;
+}
+function snapCaption(sc) {
+  if (!sc) return "";
+  if (sc.error && sc.f_sw == null) return sc.error;
+  return `${fmt(sc.f_sw / 1000, 1)} kHz · D ${fmt(sc.duty * 100, 0)} %`;
+}
+const THUMB_ASPECT = 0.6;                                   // RTM2034 screenshot 800 x 480
+function renderStrip() {
+  const run = shownRun(), geo = GRAPHS.i.geo;
+  const on = !!(run && run.settings.scope_capture);
+  $("strip-wrap").hidden = !on;
+  $("strip-sim").hidden = !run?.scope_sim;
+  if (!on || !geo) return;
+  const names = state.board.phases, b = state.board;
+  const items = (geo.blocks || []).map(k => {
+    const r = run.rows.find(x => x.ch === k.ch && x.vin_set === k.vin_set && x.phase === k.phase);
+    return r?.scope ? { ...k, r, sc: r.scope } : null;
+  }).filter(Boolean);
+  // Thumbnails share the width of their VIN block, in phase order (LOAD1 | LOAD2 | LOAD1+2), so they
+  // sit under the block they belong to. One width for all: from the narrowest finished VIN block.
+  const nph = run.settings.phases.length;
+  const vw = (geo.vins || []).filter(v => !v.growing).map(v => v.xe - v.xs);
+  const slot = (vw.length ? Math.min(...vw) : 200) / nph;
+  const w = Math.max(24, Math.min(160, Math.round(slot - 6)));
+  for (const k of items) {
+    const v = (geo.vins || []).find(x => x.ch === k.ch && x.vin_set === k.vin_set);
+    const j = run.settings.phases.indexOf(k.phase);
+    const left = v ? v.xs + ((v.xe - v.xs) - nph * slot) / 2 : k.xs;
+    k.cx = v ? Math.max(v.xs, left) + (j + 0.5) * slot : (k.xs + k.xe) / 2;
+  }
+  const hImg = Math.round(w * THUMB_ASPECT), cap = w >= 34;
+  const key = JSON.stringify([geo.W, w, items.map(k => [k.sc.png || k.sc.error, Math.round(k.cx)])]);
+  const strip = $("strip");
+  if (strip.dataset.key === key) return;                    // redraw only when something changed
+  strip.dataset.key = key;
+  strip.style.height = `${hImg + (cap ? 20 : 6)}px`;
+  let h = cap ? `<div class="unit" style="left:0;width:${geo.x0 - 8}px;top:${hImg + 2}px">kHz</div>` : "";
+  items.forEach((k, j) => {
+    const x = k.cx - w / 2;
+    const bad = k.sc.f_sw == null || (k.sc.spread ?? 0) > SPREAD_FLAG;
+    h += `<div class="th" data-j="${j}" style="left:${x}px;width:${w}px">` +
+         (k.sc.png ? `<img src="${snapUrl(k.sc.png)}" alt="" style="height:${hImg}px;object-fit:contain">`
+                   : `<div style="height:${hImg}px;border:1px dashed var(--bad);border-radius:3px"></div>`) +
+         (cap ? `<div class="c${bad ? " bad" : ""}">${k.sc.f_sw == null ? "–" : fmt(k.sc.f_sw / 1000, w >= 44 ? 1 : 0)}</div>` : "") + `</div>`;
+  });
+  strip.innerHTML = h + `<div class="tip" id="tip-s" hidden></div>`;
+  const tip = $("tip-s");
+  strip.querySelectorAll(".th").forEach(el => {
+    const k = items[+el.dataset.j];
+    const title = `CH${k.ch} ${chName(k.ch)}${k.vin_set != null ? ` · ${k.vin_set} V` : ""} · ${names[k.phase]}`;
+    el.onmouseenter = () => {
+      const row = (n, v) => `<i></i><span>${n}</span><b>${v}</b>`;
+      const sc = k.sc, r = k.r;
+      tip.innerHTML = `<div class="h">${title}${run.scope_sim ? ` <span class="simtag">SIMULATED DATA</span>` : ""}</div><div class="r">` +
+        (sc.f_sw != null ? row("f_sw", `${fmt(sc.f_sw / 1000, 1)} kHz`) + row("duty", `${fmt(sc.duty * 100, 1)} %`) +
+                           row("period", spreadHtml(sc))
+                         : row("scope", sc.error || "no f_sw")) +
+        (sc.vpp != null ? row("Vpp", `${fmt(sc.vpp, 2)} V`) : "") +
+        (r.vload != null ? row("VLOAD", `${fmt(r.vload, 3)} V`) + row("Iload", `${fmt(r.iload * 1000, 0)} mA`) : "") +
+        `</div>${sc.png ? `<img src="${snapUrl(sc.png)}" alt="">` : ""}`;
+      tip.hidden = false;
+      const cx = k.cx, tw = tip.offsetWidth;
+      tip.style.left = `${Math.max(0, Math.min(geo.W - tw, cx - tw / 2))}px`;
+      // crosshair in both graphs at the middle of this phase
+      const mid = geo.pts.filter(p => p.ch === k.ch && p.vin_set === k.vin_set && p.phase === k.phase);
+      state.hover = mid.length ? { i: mid[Math.floor(mid.length / 2)].i, graph: "s" } : null;
+      drawChart();
+    };
+    el.onmouseleave = () => { tip.hidden = true; state.hover = null; drawChart(); };
+    el.onclick = () => { if (k.sc.png) galleryOpen(items, items.indexOf(k)); };
+  });
 }
 
 function renderResults(run) {
@@ -533,7 +894,7 @@ function renderResults(run) {
   let h = `<table><tr><th>Channel</th><th>VIN</th>${phases.map(p => `<th colspan="3">${names[p]}</th>`).join("")}<th>Load reg.</th></tr>
     <tr class="sub"><th></th><th>V</th>${phases.map(() => `<th>VLOAD V</th><th>Iload A</th><th>η %</th>`).join("")}<th>mV (ΔI A)</th></tr>`;
   for (const l of run.table) {
-    const head = `<td>CH${l.ch} ${b.channels[l.ch].name}</td><td class="num">${l.vin != null ? fmt(l.vin, 2) : (l.vin_set ?? "–")}</td>`;
+    const head = `<td>CH${l.ch} ${chName(l.ch)}</td><td class="num">${l.vin != null ? fmt(l.vin, 2) : (l.vin_set ?? "–")}</td>`;
     if (l.error) { h += `<tr>${head}<td class="err" colspan="${phases.length * 3 + 1}">${l.error}</td></tr>`; continue; }
     h += `<tr>${head}${phases.map(p => { const x = l.phases[p];
       return x ? `<td class="num">${fmt(x.vload, 3)}</td><td class="num">${fmt(x.iload, 3)}</td><td class="num">${x.eta == null ? "–" : fmt(100 * x.eta, 1)}</td>` : `<td></td><td></td><td></td>`; }).join("")}
@@ -542,7 +903,7 @@ function renderResults(run) {
   $("results").innerHTML = h + "</table>";
   const lr = run.line_reg || {}, chs = Object.keys(lr);
   $("linereg").innerHTML = chs.length ? `<table><tr><th>Line regulation (VLOAD spread over VIN)</th>${phases.map(p => `<th>${names[p]} mV</th>`).join("")}</tr>
-    ${chs.map(ch => `<tr><td>CH${ch} ${b.channels[ch].name}</td>${phases.map(p => `<td class="num">${lr[ch][p] != null ? fmt(lr[ch][p], 1) : "–"}</td>`).join("")}</tr>`).join("")}</table>` : "";
+    ${chs.map(ch => `<tr><td>CH${ch} ${chName(ch)}</td>${phases.map(p => `<td class="num">${lr[ch][p] != null ? fmt(lr[ch][p], 1) : "–"}</td>`).join("")}</tr>`).join("")}</table>` : "";
 }
 
 // ---- chart ---------------------------------------------------------------
@@ -574,7 +935,7 @@ function niceAxis(lo, hi, zero) {
 // waits cut out (they are not measurement time). Fixed axis up to the planned end, the trace
 // grows from left to right. Before the first run the graphs stay empty.
 function timeWindow(all) {
-  const run = state.status?.run, last = all[all.length - 1];
+  const run = shownRun(), last = all[all.length - 1];
   if (run && last) {
     const active = run.state === "running" || run.state === "waiting";
     const pts = [];
@@ -599,8 +960,9 @@ function timeLabel(sec) {
 }
 
 function drawChart() {
-  const all = state.samples, win = timeWindow(all);
+  const all = shownSamples(), win = timeWindow(all);
   for (const id of Object.keys(GRAPHS)) drawGraph(GRAPHS[id], id, all, win);
+  renderStrip();
 }
 
 function drawGraph(g, id, all, win) {
@@ -615,7 +977,7 @@ function drawGraph(g, id, all, win) {
   if (!all.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">no samples yet: connect the Pico</text>`; return; }
 
   const tStart = win.x0, tEnd = win.x1, span = tEnd - tStart, pts = win.pts;
-  if (!pts.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">${state.status?.run ? "waiting for samples" : "no run yet: the graphs show a run from start to end"}</text>`; return; }
+  if (!pts.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">${shownRun() ? "waiting for samples" : "no run yet: the graphs show a run from start to end"}</text>`; return; }
   const X = t => x0 + (t - tStart) / span * (x1 - x0);
   const shown = g.series.filter(s => s.on);
   const vals = [];
@@ -666,7 +1028,7 @@ function drawGraph(g, id, all, win) {
     out += `<line x1="${xs(b)}" x2="${xs(b)}" y1="2" y2="${y1}" stroke="var(--muted)" stroke-width="1.5"/>`;
     if (k === chBlocks.length - 1 && win.now == null)
       out += `<line x1="${xe(b)}" x2="${xe(b)}" y1="2" y2="${y1}" stroke="var(--muted)" stroke-width="1.5"/>`;
-    const name = state.board.channels[b.p.ch]?.name || "";
+    const name = chName(b.p.ch);
     if (xe(b) - xs(b) > 40) out += `<text class="ph" x="${(xs(b) + xe(b)) / 2}" y="13" text-anchor="middle">CH${b.p.ch}${xe(b) - xs(b) > 110 ? " · " + name : ""}</text>`;
   });
 
@@ -706,7 +1068,11 @@ function drawGraph(g, id, all, win) {
     out += `<path d="${path(s, p => p.ch != null && MEASURED.has(p.phase))}" fill="none" stroke="var(${s.color})" stroke-width="1.8" stroke-linejoin="round"/>`;
   }
   // hover: crosshair in both graphs at the same sample, readout box in the graph under the mouse
-  g.geo = { W, x0, x1, y0, y1, X, pts, fixed: win.fixed, lastX: pts[pts.length - 1].x };
+  g.geo = { W, x0, x1, y0, y1, X, pts, fixed: win.fixed, lastX: pts[pts.length - 1].x,
+            blocks: phBlocks.filter(b => PHASE_LABEL[b.p.phase]).map(b => ({ ch: b.p.ch, vin_set: b.p.vin_set,
+              phase: b.p.phase, xs: xs(b), xe: xe(b), growing: b === growing })),
+            vins: vinBlocks.map(b => ({ ch: b.p.ch, vin_set: b.p.vin_set, xs: xs(b), xe: xe(b),
+              growing: win.now != null && b === vinBlocks[vinBlocks.length - 1] })) };
   const h = state.hover && pts.find(p => p.i === state.hover.i);
   if (h) {
     out += `<line x1="${X(h.x)}" x2="${X(h.x)}" y1="${y0}" y2="${y1}" stroke="var(--ink)" stroke-width="1" stroke-dasharray="3 2"/>`;
@@ -748,7 +1114,16 @@ function hoverHook(g, id) {
   tip.innerHTML = `<div class="h">${when} · ${where}</div><div class="r">` +
     row("--s-vin", "VIN", `${fmt(p.vin, 3)} V`) + row("--s-vload", "VLOAD", `${fmt(p.vload, 3)} V`) +
     row("--s-iin", "Iin", `${fmt(p.iin * 1000, 1)} mA`) + row("--s-iload", "Iload", `${fmt(p.iload * 1000, 1)} mA`) +
-    `<i></i><span>η</span><b>${pin > 0.2 && pout > 0.1 ? fmt(100 * pout / pin, 1) + " %" : "–"}</b></div>`;
+    `<i></i><span>η</span><b>${pin > 0.2 && pout > 0.1 ? fmt(100 * pout / pin, 1) + " %" : "–"}</b>` +
+    (() => {
+      const r = shownRun()?.rows.find(x => x.ch === p.ch && x.vin_set === p.vin_set && x.phase === p.phase);
+      const sc = r?.scope;
+      if (!sc) return "</div>";
+      return (sc.f_sw != null ? `<i></i><span>f_sw</span><b>${fmt(sc.f_sw / 1000, 1)} kHz</b><i></i><span>duty</span><b>${fmt(sc.duty * 100, 1)} %</b>` +
+                                `<i></i><span>period</span><b>${spreadHtml(sc)}</b>`
+                              : `<i></i><span>scope</span><b>${sc.error}</b>`) +
+             `</div>${sc.png ? `<img src="${snapUrl(sc.png)}" alt="">` : ""}`;
+    })();
   tip.hidden = false;
   const left = h.px + 16 + 190 > h.w ? h.px - 16 - tip.offsetWidth : h.px + 16;
   tip.style.left = `${left}px`; tip.style.top = `${Math.max(4, h.py - 40)}px`;
